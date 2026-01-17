@@ -28,6 +28,10 @@ const ICON_MAPPINGS = {
     'Potion_Health_Lesser': 'Potion_Health_Small',
     'Potion_Stamina_Greater': 'Potion_Stamina_Large',
     'Potion_Stamina_Lesser': 'Potion_Stamina_Small',
+    'Potion_Signature_Lesser': 'Potion_Mana_Small',
+    'Potion_Signature_Normal': 'Potion_Mana',
+    'Potion_Signature_Greater': 'Potion_Mana_Large',
+    'Potion_Signature_Super': 'Potion_Mana_Large', // Fallback just in case
     'Weapon_Bomb': 'Weapon_Bow_Flame',
     'Weapon_Crossbow_Ancient_Steel': 'Weapon_Crossbow_Iron',
     'Weapon_Shortbow_Cobalt': 'Weapon_Bow_Cobalt',

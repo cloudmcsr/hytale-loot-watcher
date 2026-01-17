@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hytale Loot Viewer</title>
+    <link rel="icon" type="image/png" href="loot-watcher-ico.png">
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="fixes.css">
     <script src="data.js"></script>
     <script src="icon_mappings.js"></script>
 </head>
@@ -40,6 +40,7 @@
             </button>
         </div>
         <div class="tree-root" id="sidebar-root"></div>
+        <div class="scroll-hint" style="padding: 6px 10px; font-size: 11px; color: #555; text-align: center; border-top: 1px solid #333;">Shift+Scroll for horizontal scroll</div>
     </div>
 
     <!-- Main View -->
@@ -120,7 +121,7 @@
 
                     <h4>Step 2: Extract Required Folders</h4>
                     <p class="help-desc">Open <code>Assets.zip</code> and navigate into <code>Assets/Server/</code>.</p>
-                    <p class="help-desc">Extract these two folders to the same folder as this viewer:</p>
+                    <p class="help-desc">Extract these two folders to the same folder as this tool:</p>
                     <ul class="help-list">
                         <li><code>Prefabs</code> (contains structure data)</li>
                         <li><code>Drops/Prefabs</code> (contains loot tables)</li>
@@ -224,7 +225,18 @@ def main():
     
     print(f"Writing to {OUTPUT_FILE}...")
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-                        <li>Tier breakdown shown in stats (e.g. <code>Tier 1: 5 | Tier 3: 2</code>)</li>
+        json.dump(output, f, indent=2)
+    
+    print(f"Success! {len(prefabs_data)} structures, {len(filtered_definitions)} loot tables")
+
+if __name__ == "__main__":
+    main()</code></pre>
+                </section>
+
+                <section class="help-section">
+                    <h3>Tips &amp; Tricks</h3>
+                    <ul class="help-list">
+                        <li>Hover over item icons for detailed tooltips</li>
                         <li>Missing icons show "?" - run <code>showMissingIconsReport()</code> in console</li>
                         <li>Press <kbd>Esc</kbd> to close this help dialog</li>
                     </ul>

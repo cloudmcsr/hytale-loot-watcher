@@ -116,7 +116,7 @@ function renderTreeNode(obj, expandAll = false) {
                 <span class="node-icon icon-folder">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 </span> 
-                <span class="node-name">${key}</span>`;
+                <span class="node-name">${key} ${item._count ? `<span style="color:#666; font-size:11px; margin-left:4px;">(${item._count})</span>` : ''}</span>`;
             
             label.onclick = () => {
                 div.classList.toggle('expanded');
@@ -173,9 +173,11 @@ document.getElementById('search').addEventListener('input', (e) => {
     // Clear container
     container.innerHTML = '';
 
-    // Helper to build tree from filtered results
+    // Helper to build tree from filtered results and count matches
     const buildSearchTree = (prefabs) => {
         const root = {};
+        
+        // 1. Build the tree structure
         prefabs.forEach(p => {
             const pathParts = p.relative_path_from_root.replace(/\\/g, '/').split('/');
             let current = root;
@@ -184,11 +186,30 @@ document.getElementById('search').addEventListener('input', (e) => {
                 if(i === pathParts.length - 1) {
                     current[part] = { _type: 'file', _data: p };
                 } else {
-                    if(!current[part]) current[part] = { _type: 'folder', _children: {}, _expanded: true }; // Mark as expanded for search
+                    if(!current[part]) current[part] = { _type: 'folder', _children: {}, _expanded: false }; // Collapsed by default
                     current = current[part]._children;
                 }
             });
         });
+
+        // 2. Recursive function to count items in folders
+        const countItems = (node) => {
+            let count = 0;
+            Object.keys(node).forEach(key => {
+                if(key.startsWith('_')) return;
+                const item = node[key];
+                if(item._type === 'file') {
+                    count++;
+                } else {
+                    const childCount = countItems(item._children);
+                    item._count = childCount; // Store count on folder
+                    count += childCount;
+                }
+            });
+            return count;
+        };
+
+        countItems(root);
         return root;
     };
 
@@ -226,7 +247,8 @@ document.getElementById('search').addEventListener('input', (e) => {
     if (totalCount > 0) {
         const searchTree = buildSearchTree(matchedPrefabs);
         container.insertAdjacentHTML('beforeend', `<div style="padding: 10px; color: #888; font-size: 11px; border-bottom: 1px solid #333; margin-bottom: 5px;">Found ${totalCount} results for "${term}"</div>`);
-        container.appendChild(renderTreeNode(searchTree, true)); // Pass true to expand all
+        // Pass false to collapse by default
+        container.appendChild(renderTreeNode(searchTree, false)); 
     } else {
         container.innerHTML = '<div style="padding: 20px; color: #666; text-align: center;">No matches found</div>';
     }

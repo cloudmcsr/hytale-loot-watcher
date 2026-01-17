@@ -515,3 +515,66 @@ body {
     opacity: 0;
     pointer-events: none;
 }
+/* Collapsible Selection Rows */
+.logic-row {
+    cursor: pointer !important;
+    user-select: none;
+    transition: background 0.15s;
+}
+
+.logic-row:hover {
+    background: #252525 !important;
+}
+
+.logic-row.collapsed::before {
+    content: '? ';
+    font-size: 10px;
+    margin-right: 5px;
+}
+
+.logic-row.expanded::before {
+    content: '¡ ';
+    font-size: 10px;
+    margin-right: 5px;
+}
+
+.selection-content {
+    grid-column: 1 / -1;
+    display: contents;
+}
+
+.selection-content.hidden > * {
+    display: none !important;
+}
+
+/* Item Search Box */
+.item-search {
+    padding: 10px 15px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #333;
+}
+
+.item-search input {
+    width: 100%;
+    background: #0f0f0f;
+    border: 1px solid #333;
+    padding: 8px 12px;
+    color: white;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: border-color 0.2s;
+}
+
+.item-search input:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+.item-search input::placeholder {
+    color: #666;
+}
+
+/* Full Width Grid */
+.item-grid {
+    width: 100% !important;
+}

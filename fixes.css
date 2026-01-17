@@ -1,0 +1,356 @@
+﻿/* CSS Fixes - Load this AFTER style.css */
+
+/* --- Layout Fixes --- */
+.content-area {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
+}
+
+.loot-card {
+    width: 100% !important;
+    flex-shrink: 0;
+}
+
+.sidebar {
+    overflow-y: auto !important;
+}
+
+.tree-root {
+    overflow-y: visible !important;
+}
+
+/* --- Sidebar Nesting & Styling --- */
+.node-children {
+    padding-left: 8px !important;
+    /* Significantly reduced padding */
+    border-left: 1px solid #333;
+    margin-left: 4px;
+}
+
+.node-label {
+    padding: 2px 6px !important;
+    /* Tighter vertical padding */
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #ccc;
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.node-label:hover {
+    background: #2a2a2a;
+    color: white;
+}
+
+.node-label.active {
+    background: var(--accent, #3b82f6);
+    color: white;
+}
+
+/* --- Icons --- */
+.btn-icon {
+    width: 32px;
+    height: 32px;
+    padding: 6px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #888;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-icon:hover {
+    background: #333;
+    color: white;
+    border-color: #444;
+}
+
+.btn-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.stat-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 6px;
+    color: var(--accent, #3b82f6);
+}
+
+/* --- Search Box --- */
+.search-box {
+    position: relative;
+    padding: 10px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #333;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 8px 32px 8px 10px;
+    /* Space for clear button */
+    background: #0f0f0f;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: white;
+    font-size: 13px;
+}
+
+.search-box input:focus {
+    border-color: var(--accent, #3b82f6);
+    outline: none;
+}
+
+.search-clear {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.search-clear:hover {
+    color: white;
+    background: #333;
+}
+
+.search-clear svg {
+    width: 14px;
+    height: 14px;
+}
+
+.search-clear.hidden {
+    display: none;
+}
+
+/* --- Search Results Grouping --- */
+.search-group {
+    margin-bottom: 2px;
+}
+
+.search-group-header {
+    padding: 8px 12px;
+    background: #222;
+    color: #aaa;
+    font-size: 11px;
+    font-weight: 600;
+    /* Fixed typo */
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-left: 3px solid var(--accent, #3b82f6);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+
+.search-group-header:hover {
+    background: #2a2a2a;
+    color: white;
+}
+
+.search-group-header::after {
+    content: '▼';
+    font-size: 9px;
+    transition: transform 0.2s;
+}
+
+.search-group.collapsed .search-group-header::after {
+    transform: rotate(-90deg);
+}
+
+.search-group-items {
+    display: block;
+}
+
+.search-group.collapsed .search-group-items {
+    display: none;
+}
+
+/* --- Help Modal --- */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: #1a1a1a;
+    width: 90%;
+    max-width: 800px;
+    max-height: 85vh;
+    border-radius: 8px;
+    border: 1px solid #333;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #222;
+    border-radius: 8px 8px 0 0;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    color: white;
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-close:hover {
+    background: #333;
+    color: white;
+}
+
+.modal-close svg {
+    width: 20px;
+    height: 20px;
+}
+
+.modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    color: #ccc;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.help-section {
+    margin-bottom: 30px;
+}
+
+.help-section h3 {
+    color: var(--accent, #3b82f6);
+    font-size: 16px;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+}
+
+.help-section h4 {
+    color: #eee;
+    font-size: 14px;
+    margin: 15px 0 8px 0;
+}
+
+.help-list {
+    padding-left: 20px;
+    margin: 0;
+}
+
+.help-list li {
+    margin-bottom: 6px;
+}
+
+.help-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.help-table th,
+.help-table td {
+    padding: 10px;
+    border: 1px solid #333;
+    text-align: left;
+}
+
+.help-table th {
+    background: #222;
+    color: white;
+}
+
+.code-block {
+    background: #0f0f0f;
+    padding: 12px;
+    border-radius: 4px;
+    border: 1px solid #333;
+    overflow-x: auto;
+    font-family: 'Consolas', monospace;
+    font-size: 12px;
+    color: #a5d6ff;
+    margin: 10px 0;
+}
+
+.code-toggle {
+    background: #2a2a2a;
+    border: 1px solid #444;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.code-toggle:hover {
+    background: #333;
+    border-color: #555;
+}
+
+kbd {
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-family: monospace;
+    font-size: 11px;
+    color: #eee;
+}
+
+/* --- Misc Fixes --- */
+.logic-row.collapsed::before,
+.logic-row.expanded::before {
+    content: '' !important;
+}
+
+.droplist-content .item-grid {
+    border-left: none !important;
+    margin-left: 0 !important;
+}

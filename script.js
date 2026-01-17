@@ -1,4 +1,6 @@
 let DATA = null;
+let currentItemFilter = '';
+let selectionStates = {}; // Track collapsed state of selections
 
 // --- Auto-load Default JSON ---
 window.addEventListener('DOMContentLoaded', () => {
@@ -130,28 +132,171 @@ function renderTreeNode(obj) {
     return wrapper;
 }
 
-// --- Search ---
+// --- Smart Search (auto-detects prefab vs item search) ---
+window.clearSearch = function() {
+    const searchInput = document.getElementById('search');
+    searchInput.value = '';
+    document.getElementById('search-clear').classList.add('hidden');
+    buildSidebar(DATA.prefabs);
+};
+
 document.getElementById('search').addEventListener('input', (e) => {
     const term = e.target.value.toLowerCase();
     const container = document.getElementById('sidebar-root');
-    if(!term) { buildSidebar(DATA.prefabs); return; }
+    const clearBtn = document.getElementById('search-clear');
+    
+    // Show/hide clear button
+    if(term) {
+        clearBtn.classList.remove('hidden');
+    } else {
+        clearBtn.classList.add('hidden');
+        buildSidebar(DATA.prefabs);
+        return;
+    }
 
+    // Clear container
     container.innerHTML = '';
+
+    // Helper to render groups
+    const renderGroups = (groupedResults, totalCount, term) => {
+        if (totalCount > 0) {
+            // Sort structure names alphabetically
+            const sortedKeys = Array.from(groupedResults.keys()).sort();
+            
+            sortedKeys.forEach(structureName => {
+                const prefabs = groupedResults.get(structureName);
+                
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'search-group';
+                
+                // Header
+                const header = document.createElement('div');
+                header.className = 'search-group-header';
+                header.innerHTML = `<span>${structureName}</span> <span style="font-size: 10px; opacity: 0.7;">${prefabs.length}</span>`;
+                header.onclick = () => {
+                    groupDiv.classList.toggle('collapsed');
+                };
+                groupDiv.appendChild(header);
+                
+                // Items container
+                const itemsContainer = document.createElement('div');
+                itemsContainer.className = 'search-group-items';
+                
+                prefabs.forEach(p => {
+                    const div = document.createElement('div');
+                    div.className = 'node-label';
+                    div.innerHTML = `<span class="node-icon icon-file">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+                    </span> ${p.prefab_name}`;
+                    div.onclick = () => {
+                        document.querySelectorAll('.node-label').forEach(el => el.classList.remove('active'));
+                        div.classList.add('active');
+                        loadPrefab(p);
+                    }
+                    itemsContainer.appendChild(div);
+                });
+                
+                groupDiv.appendChild(itemsContainer);
+                container.appendChild(groupDiv);
+            });
+            
+            container.insertAdjacentHTML('afterbegin', `<div style="padding: 10px; color: #666; font-size: 11px; border-bottom: 1px solid #222; margin-bottom: 5px;">Found ${totalCount} results for "${term}"</div>`);
+        } else {
+            container.innerHTML = '<div style="padding: 20px; color: #666; text-align: center;">No matches found</div>';
+        }
+    };
+    
+    const groupedResults = new Map(); // Map structure_name -> prefabs[]
+    const addedPrefabNames = new Set(); // Track added prefabs to avoid duplicates
+    let totalCount = 0;
+
+    // 1. Search by Prefab Name
     DATA.prefabs.forEach(p => {
         if(p.prefab_name.toLowerCase().includes(term)) {
-            const div = document.createElement('div');
-            div.className = 'node-label';
-            div.style.paddingLeft = '15px';
-            div.innerHTML = `<span class="node-icon icon-file">📄</span> ${p.prefab_name}`;
-            div.onclick = () => {
-                document.querySelectorAll('.node-label').forEach(el => el.classList.remove('active'));
-                div.classList.add('active');
-                loadPrefab(p);
+            const structureName = p.structure_name || 'Other';
+            if(!groupedResults.has(structureName)) {
+                groupedResults.set(structureName, []);
             }
-            container.appendChild(div);
+            groupedResults.get(structureName).push(p);
+            addedPrefabNames.add(p.prefab_name);
+            totalCount++;
         }
     });
+
+    // 2. Search by Item Content (if not already added)
+    DATA.prefabs.forEach(prefab => {
+        // Skip if already found by name
+        if(addedPrefabNames.has(prefab.prefab_name)) return;
+
+        let hasItem = false;
+        prefab.chests.forEach(chest => {
+            const lootDef = DATA.loot_table_definitions[chest.loot_table_id];
+            if(lootDef && containsItem(lootDef, term)) {
+                hasItem = true;
+            }
+        });
+        
+        if(hasItem) {
+            const structureName = prefab.structure_name || 'Other';
+            if(!groupedResults.has(structureName)) {
+                groupedResults.set(structureName, []);
+            }
+            groupedResults.get(structureName).push(prefab);
+            totalCount++;
+        }
+    });
+
+    renderGroups(groupedResults, totalCount, term);
 });
+
+// Helper: Check if loot table contains an item
+function containsItem(node, itemName) {
+    if(!node) return false;
+    
+    if(node.Container) return containsItem(node.Container, itemName);
+    
+    if(Array.isArray(node)) {
+        return node.some(n => containsItem(n, itemName));
+    }
+    
+    if(node.Type === "Choice" || node.Type === "Multiple") {
+        if(node.Containers) {
+            return node.Containers.some(c => containsItem(c, itemName));
+        }
+    }
+    
+    if(node.Type === "Droplist") {
+        const def = DATA.loot_table_definitions[node.DroplistId];
+        return def ? containsItem(def, itemName) : false;
+    }
+    
+    if(node.Type === "Single" && node.Item) {
+        return node.Item.ItemId.toLowerCase().includes(itemName);
+    }
+    
+    return false;
+}
+
+// --- Calculate Tier Stats ---
+function calculateTierStats(chests) {
+    const stats = {
+        total: chests.length,
+        tiers: {}
+    };
+    
+    chests.forEach(chest => {
+        const tier = chest.loot_table_id.match(/Tier(\d+)/i);
+        if(tier) {
+            const tierNum = `Tier ${tier[1]}`;
+            stats.tiers[tierNum] = (stats.tiers[tierNum] || 0) + 1;
+        } else {
+            // Count non-tier tables
+            stats.tiers['Other'] = (stats.tiers['Other'] || 0) + 1;
+        }
+    });
+    
+    return stats;
+}
 
 // --- Main Content View ---
 function loadPrefab(prefab) {
@@ -160,11 +305,31 @@ function loadPrefab(prefab) {
 
     document.getElementById('view-title').innerText = prefab.prefab_name;
     document.getElementById('view-path').innerText = prefab.relative_path_from_root;
-    document.getElementById('stat-chests').innerText = prefab.total_chests;
-    document.getElementById('stat-tables').innerText = Object.keys(prefab.tier_counts).length;
+    
+    // Calculate and display tier stats
+    const tierStats = calculateTierStats(prefab.chests);
+    document.getElementById('stat-chests').innerText = tierStats.total;
+    
+    // Show tier breakdown
+    const tierCount = Object.keys(tierStats.tiers).length;
+    const tierBreakdown = Object.entries(tierStats.tiers)
+        .sort((a, b) => {
+            if(a[0] === 'Other') return 1;
+            if(b[0] === 'Other') return -1;
+            return a[0].localeCompare(b[0]);
+        })
+        .map(([tier, count]) => `${tier}: ${count}`)
+        .join(' | ');
+    
+    const statTablesEl = document.getElementById('stat-tables');
+    statTablesEl.innerText = `${tierCount} (${tierBreakdown})`;
+    statTablesEl.title = 'Loot table tier breakdown';
 
     const container = document.getElementById('loot-container');
     container.innerHTML = '';
+    
+    // Reset selection states
+    selectionStates = {};
 
     const groups = {};
     prefab.chests.forEach(c => {
@@ -199,6 +364,12 @@ function loadPrefab(prefab) {
             </div>
         `;
         body.appendChild(coordsBox);
+        
+        // Add item search box
+        const searchBox = document.createElement('div');
+        searchBox.className = 'item-search';
+        searchBox.innerHTML = `<input type="text" placeholder="Filter items... (e.g., 'sword', 'ore')" oninput="filterItems(this.value)">`;
+        body.appendChild(searchBox);
 
         // Render Items as Grid
         const grid = document.createElement('div');
@@ -212,7 +383,23 @@ function loadPrefab(prefab) {
     });
 }
 
+// Filter items in current view
+window.filterItems = function(searchTerm) {
+    currentItemFilter = searchTerm.toLowerCase();
+    const slots = document.querySelectorAll('.item-slot');
+    slots.forEach(slot => {
+        const itemId = slot.querySelector('img').getAttribute('data-item-id') || '';
+        if(!searchTerm || itemId.toLowerCase().includes(currentItemFilter)) {
+            slot.style.display = '';
+        } else {
+            slot.style.display = 'none';
+        }
+    });
+};
+
 // --- Grid Renderer ---
+let selectionCounter = 0;
+
 function renderLootGrid(node, totalWeight = 0) {
     if(!node) return `<div style="color:red; padding:10px;">Definition not found</div>`;
     
@@ -229,16 +416,22 @@ function renderLootGrid(node, totalWeight = 0) {
         if(node.Containers) node.Containers.forEach(c => sum += (c.Weight || 0));
         const range = (node.RollsMin === node.RollsMax) ? node.RollsMin : `${node.RollsMin}-${node.RollsMax}`;
         
-        html += `<div class="logic-row">SELECTION (Pick ${range})</div>`;
+        const selId = `sel-${selectionCounter++}`;
+        html += `<div class="logic-row expanded" onclick="toggleSelection('${selId}')">&#9660; SELECTION (Pick ${range})</div>`;
+        html += `<div class="selection-content" id="${selId}">`;
         if(node.Containers) {
             html += node.Containers.map(c => renderLootGrid(c, sum)).join('');
         }
+        html += `</div>`;
     }
     else if(node.Type === "Multiple") {
-        html += `<div class="logic-row bundle">BUNDLE (All)</div>`;
+        const selId = `sel-${selectionCounter++}`;
+        html += `<div class="logic-row bundle expanded" onclick="toggleSelection('${selId}')">&#9660; BUNDLE (All)</div>`; 
+        html += `<div class="selection-content" id="${selId}">`;
         if(node.Containers) {
             html += node.Containers.map(c => renderLootGrid(c, 0)).join('');
         }
+        html += `</div>`;
     }
     else if(node.Type === "Droplist") {
         const safeId = node.DroplistId.replace(/[^a-zA-Z0-9]/g, '');
@@ -281,6 +474,26 @@ function renderLootGrid(node, totalWeight = 0) {
 
     return html;
 }
+
+// Toggle selection visibility
+window.toggleSelection = function(selId) {
+    const content = document.getElementById(selId);
+    const header = content.previousElementSibling;
+    
+    if(content.classList.contains('hidden')) {
+        content.classList.remove('hidden');
+        header.classList.remove('collapsed');
+        header.classList.add('expanded');
+        // Change to down arrow
+        header.innerHTML = header.innerHTML.replace('&#9654;', '&#9660;');
+    } else {
+        content.classList.add('hidden');
+        header.classList.add('collapsed');
+        header.classList.remove('expanded');
+        // Change to right arrow
+        header.innerHTML = header.innerHTML.replace('&#9660;', '&#9654;');
+    }
+};
 
 function toggleDroplistGrid(el, droplistId) {
     const safeId = droplistId.replace(/[^a-zA-Z0-9]/g, '');
@@ -328,8 +541,9 @@ const missingIcons = new Set();
 
 function trackMissingIcon(itemId, imgElement) {
     missingIcons.add(itemId);
-    // Set fallback placeholder
-    imgElement.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIGZpbGw9IiMyMjIiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSIgZm9udC1zaXplPSIzMCIgZmlsbD0iIzU1NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+PzwvdGV4dD48L3N2Zz4=';
+    // Set fallback placeholder - lighter and cleaner
+    imgElement.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM1NTUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzIiB5PSIzIiB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHJ4PSIyIiByeT0iMiIvPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjMiLz48bGluZSB4MT0iMTIiIHkxPSI4IiB4Mj0iMTIiIHkyPSI4Ii8+PC9zdmc+';
+    imgElement.style.opacity = '0.5';
 }
 
 // Function to show the missing icons report
@@ -357,3 +571,39 @@ window.addEventListener('load', () => {
 window.showMissingIconsReport = showMissingIconsReport;
 console.log('%cTip: Run showMissingIconsReport() in console to see missing icons at any time', 'color: #3b82f6; font-style: italic;');
 
+// Help Modal Functions
+window.openHelp = function() {
+    document.getElementById('help-modal').classList.remove('hidden');
+};
+
+window.closeHelp = function() {
+    document.getElementById('help-modal').classList.add('hidden');
+};
+
+window.togglePythonCode = function() {
+    const codeBlock = document.getElementById('python-code');
+    const toggleBtn = document.querySelector('.code-toggle');
+    
+    if(codeBlock.classList.contains('hidden')) {
+        codeBlock.classList.remove('hidden');
+        toggleBtn.textContent = 'Hide Source ▲';
+    } else {
+        codeBlock.classList.add('hidden');
+        toggleBtn.textContent = 'Show Full Source ▼';
+    }
+};
+
+// Close modal on background click
+document.addEventListener('click', (e) => {
+    const modal = document.getElementById('help-modal');
+    if(e.target === modal) {
+        closeHelp();
+    }
+});
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape') {
+        closeHelp();
+    }
+});

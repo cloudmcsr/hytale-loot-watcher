@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hytale Loot Viewer</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="data.js"></script>
+    <script src="icon_mappings.js"></script>
+</head>
+<body>
+    <!-- Upload Overlay -->
+    <div id="upload-overlay">
+        <div class="upload-box">
+            <h1>Hytale Loot Viewer</h1>
+            <p>Drag & Drop <code>mapped_prefabs_data.json</code> here</p>
+            <button class="btn-upload" onclick="document.getElementById('file-input').click()">Select File</button>
+            <input type="file" id="file-input" accept=".json" hidden>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <span>Prefabs</span>
+            <button id="btn-open" class="btn-icon" title="Open File">📂</button>
+        </div>
+        <div class="search-box">
+            <input type="text" id="search" placeholder="Filter by name...">
+        </div>
+        <div class="tree-root" id="sidebar-root"></div>
+    </div>
+
+    <!-- Main View -->
+    <div class="main">
+        <div id="empty-state" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#444;">
+            <div style="font-size: 60px; margin-bottom: 20px; opacity: 0.2;">📦</div>
+            <div style="font-size: 18px; font-weight: 500;">Select a prefab to view loot tables</div>
+        </div>
+
+        <div id="content-view" class="hidden" style="height:100%; display:flex; flex-direction:column;">
+            <div class="top-bar">
+                <div class="prefab-title" id="view-title">Goblin_Camp_01</div>
+                <div class="prefab-path" id="view-path">Prefabs/Dungeons/Goblin...</div>
+                <div class="stats-bar">
+                    <div class="stat-item">
+                        <span>📦</span> <span class="stat-value" id="stat-chests">0</span> Chests
+                    </div>
+                    <div class="stat-item">
+                        <span>📑</span> <span class="stat-value" id="stat-tables">0</span> Loot Tables
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-area" id="loot-container">
+                <!-- Loot Cards Go Here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

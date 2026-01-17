@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hytale Loot Inspector Pro</title>
+    <style>
+        :root {
+            --bg-app: #121212;
+            --bg-sidebar: #1e1e1e;
+            --bg-panel: #252526;
+            --bg-header: #2d2d2d;
+            --border: #3e3e42;
+            --highlight: #37373d;
+            
+            --text-main: #e0e0e0;
+            --text-muted: #9e9e9e;
+            --accent: #0078d4;
+            
+            --color-select: #d7ba7d; /* Yellowish for Choice */
+            --color-bundle: #4ec9b0; /* Teal for Bundle */
+            --color-ref: #c586c0;    /* Purple for Ref */
+            --color-item: #9cdcfe;   /* Blue for Item */
+        }
+
+        body { 
+            margin: 0; 
+            font-family: 'Segoe UI', 'Roboto', Helvetica, Arial, sans-serif; 
+            background: var(--bg-app); 
+            color: var(--text-main); 
+            height: 100vh; 
+            display: flex; 
+            font-size: 14px; /* Increased readability */
+            overflow: hidden;
+        }
+
+        * { box-sizing: border-box; }
+        
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 12px; height: 12px; }
+        ::-webkit-scrollbar-track { background: var(--bg-app); }
+        ::-webkit-scrollbar-thumb { background: #424242; border: 3px solid var(--bg-app); border-radius: 6px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* --- Sidebar --- */
+        .sidebar { 
+            width: 350px; 
+            background: var(--bg-sidebar); 
+            border-right: 1px solid var(--border); 
+            display: flex; 
+            flex-direction: column; 
+        }
+        
+        .sidebar-header {
+            padding: 15px;
+            background: var(--bg-header);
+            font-weight: 700;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .search-box { padding: 10px; border-bottom: 1px solid var(--border); }
+        .search-box input {
+            width: 100%;
+            background: #121212;
+            border: 1px solid #444;
+            padding: 8px 10px;
+            color: white;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .search-box input:focus { border-color: var(--accent); outline: none; }
+
+        .tree-root { overflow-y: auto; flex: 1; padding: 5px 0; }
+
+        /* Tree Nodes */
+        .node-label {
+            display: flex;
+            align-items: center;
+            padding: 6px 15px;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .node-label:hover { background: var(--highlight); }
+        .node-label.active { background: #005a9e; color: white; }
+        
+        .node-icon { margin-right: 8px; font-size: 16px; width: 20px; text-align: center; }
+        .icon-folder { color: #dcb67a; }
+        .icon-file { color: var(--text-muted); }
+        
+        .node-children { padding-left: 22px; display: none; }
+        .node-children.open { display: block; }
+        .arrow { width: 16px; text-align: center; margin-right: 4px; font-size: 10px; color: #888; transition: transform 0.1s; }
+
+        /* --- Main Content --- */
+        .main { flex: 1; display: flex; flex-direction: column; background: var(--bg-app); }
+
+        .top-bar {
+            padding: 15px 25px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .prefab-title { font-size: 22px; font-weight: 600; color: white; margin: 0; }
+        .prefab-path { font-family: 'Consolas', monospace; color: var(--text-muted); font-size: 12px; }
+
+        .content-area { flex: 1; overflow-y: auto; padding: 25px; }
+
+        /* --- Loot Card --- */
+        .loot-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 30px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .card-header {
+            background: var(--bg-header);
+            padding: 12px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            user-select: none;
+        }
+        .card-header:hover { background: var(--highlight); }
+        .card-title { font-size: 16px; font-weight: 700; color: var(--color-bundle); font-family: 'Consolas', monospace; }
+        .card-meta { color: var(--text-muted); font-size: 13px; }
+
+        /* Coordinates Box */
+        .coords-box {
+            background: #181818;
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border);
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        .coords-label { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; margin-bottom: 8px; }
+        .coords-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .coord-chip {
+            background: #333;
+            border: 1px solid #444;
+            color: #ddd;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            cursor: copy;
+        }
+        .coord-chip:hover { background: #444; border-color: var(--accent); color: white; }
+
+        /* --- The Table --- */
+        .loot-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .loot-table th { 
+            text-align: left; 
+            padding: 10px 15px; 
+            background: #1b1b1b; 
+            color: #888; 
+            font-weight: 600; 
+            font-size: 12px;
+            text-transform: uppercase;
+            border-bottom: 2px solid var(--border);
+        }
+        .loot-table td { 
+            padding: 8px 15px; 
+            border-bottom: 1px solid #333; 
+            vertical-align: middle;
+        }
+        .loot-table tr:hover td { background: #2d2d30; }
+
+        /* Table Column Widths */
+        .col-name { width: 50%; }
+        .col-qty { width: 10%; text-align: center; }
+        .col-weight { width: 10%; text-align: center; }
+        .col-chance { width: 15%; }
+        .col-type { width: 15%; text-align: right; color: #666; font-style: italic; }
+
+        /* Logic Badges */
+        .badge { 
+            display: inline-block; 
+            padding: 2px 6px; 
+            border-radius: 3px; 
+            font-size: 11px; 
+            font-weight: 700;
+            margin-right: 8px;
+            text-transform: uppercase;
+        }
+        .badge-choice { background: #4d4015; color: var(--color-select); border: 1px solid #6d5b1e; }
+        .badge-bundle { background: #163d36; color: var(--color-bundle); border: 1px solid #1f564c; }
+        
+        .tree-line {
+            font-family: monospace;
+            color: #555;
+            white-space: pre;
+            margin-right: 5px;
+        }
+
+        .item-name { font-weight: 500; color: var(--text-main); }
+        .logic-name { font-weight: 600; }
+        .text-select { color: var(--color-select); }
+        .text-bundle { color: var(--color-bundle); }
+        .text-ref { color: var(--color-ref); }
+
+        /* Upload Screen */
+        #upload-overlay { position: fixed; inset: 0; background: #000; z-index: 999; display: flex; align-items: center; justify-content: center; }
+        .upload-box { border: 2px dashed #444; padding: 60px; border-radius: 8px; text-align: center; }
+        .upload-box h1 { margin-top: 0; color: var(--text-main); }
+        .btn-upload { margin-top: 20px; padding: 10px 25px; background: var(--accent); border: none; color: white; font-weight: bold; border-radius: 4px; cursor: pointer; }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- Drag Drop Overlay -->
+    <div id="upload-overlay">
+        <div class="upload-box">
+            <h1>Hytale Data Viewer</h1>
+            <p style="color:#888;">Drag & Drop <code>mapped_prefabs_data.json</code> here</p>
+            <input type="file" id="file-input" style="display:none" accept=".json">
+            <button class="btn-upload" onclick="document.getElementById('file-input').click()">Browse Files</button>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">Prefab Explorer</div>
+        <div class="search-box">
+            <input type="text" id="search" placeholder="Filter by name...">
+        </div>
+        <div class="tree-root" id="sidebar-root"></div>
+    </div>
+
+    <!-- Main View -->
+    <div class="main">
+        <div id="empty-state" style="flex:1; display:flex; align-items:center; justify-content:center; color:#555; font-size: 18px;">
+            Select a prefab to view loot tables.
+        </div>
+
+        <div id="content-view" class="hidden" style="height:100%; display:flex; flex-direction:column;">
+            <div class="top-bar">
+                <div class="prefab-title" id="view-title">Goblin_Camp_01</div>
+                <div class="prefab-path" id="view-path">Prefabs/Dungeons/Goblin...</div>
+                <div style="margin-top:5px; display:flex; gap:15px; font-size:13px; color:#aaa;">
+                    <span>📦 <strong style="color:white" id="stat-chests">0</strong> Chests</span>
+                    <span>📑 <strong style="color:white" id="stat-tables">0</strong> Loot Tables</span>
+                </div>
+            </div>
+
+            <div class="content-area" id="loot-container">
+                <!-- Loot Cards Go Here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let DATA = null;
+
+        // --- Drag and Drop Logic ---
+        const overlay = document.getElementById('upload-overlay');
+        const fileInput = document.getElementById('file-input');
+
+        window.ondragover = e => e.preventDefault();
+        window.ondrop = e => {
+            e.preventDefault();
+            loadJSON(e.dataTransfer.files[0]);
+        };
+        fileInput.onchange = e => loadJSON(e.target.files[0]);
+
+        function loadJSON(file) {
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                try {
+                    DATA = JSON.parse(e.target.result);
+                    overlay.classList.add('hidden');
+                    buildSidebar(DATA.prefabs);
+                } catch(err) {
+                    alert("Invalid JSON file");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // --- Sidebar Tree ---
+        function buildSidebar(prefabs) {
+            const root = {};
+            
+            prefabs.forEach((p, idx) => {
+                const pathParts = p.relative_path_from_root.replace(/\\/g, '/').split('/');
+                let current = root;
+                
+                pathParts.forEach((part, i) => {
+                    if(i === pathParts.length - 1) {
+                        current[part] = { _type: 'file', _data: p };
+                    } else {
+                        if(!current[part]) current[part] = { _type: 'folder', _children: {} };
+                        current = current[part]._children;
+                    }
+                });
+            });
+
+            const container = document.getElementById('sidebar-root');
+            container.innerHTML = '';
+            container.appendChild(renderTreeNode(root));
+        }
+
+        function renderTreeNode(obj) {
+            const wrapper = document.createElement('div');
+            
+            // Sort: Folders first
+            const keys = Object.keys(obj).sort((a,b) => {
+                const tA = obj[a]._type || 'folder';
+                const tB = obj[b]._type || 'folder';
+                if(tA === tB) return a.localeCompare(b);
+                return tA === 'folder' ? -1 : 1;
+            });
+
+            keys.forEach(key => {
+                if(key.startsWith('_')) return;
+                
+                const item = obj[key];
+                const isFolder = item._type === 'folder';
+                const div = document.createElement('div');
+                div.className = 'node-item';
+
+                const label = document.createElement('div');
+                label.className = 'node-label';
+                
+                if(isFolder) {
+                    label.innerHTML = `<span class="arrow">▶</span><span class="node-icon icon-folder">📁</span> ${key}`;
+                    label.onclick = () => {
+                        const children = div.querySelector('.node-children');
+                        const arrow = label.querySelector('.arrow');
+                        children.classList.toggle('open');
+                        arrow.style.transform = children.classList.contains('open') ? 'rotate(90deg)' : 'rotate(0deg)';
+                    };
+                } else {
+                    label.innerHTML = `<span class="arrow"></span><span class="node-icon icon-file">📄</span> ${key}`;
+                    label.onclick = () => {
+                        document.querySelectorAll('.node-label').forEach(el => el.classList.remove('active'));
+                        label.classList.add('active');
+                        loadPrefab(item._data);
+                    }
+                }
+
+                div.appendChild(label);
+
+                if(isFolder) {
+                    const childrenDiv = document.createElement('div');
+                    childrenDiv.className = 'node-children';
+                    childrenDiv.appendChild(renderTreeNode(item._children));
+                    div.appendChild(childrenDiv);
+                }
+                wrapper.appendChild(div);
+            });
+
+            return wrapper;
+        }
+
+        // --- Search ---
+        document.getElementById('search').addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const container = document.getElementById('sidebar-root');
+            
+            if(!term) {
+                buildSidebar(DATA.prefabs);
+                return;
+            }
+
+            container.innerHTML = '';
+            DATA.prefabs.forEach(p => {
+                if(p.prefab_name.toLowerCase().includes(term)) {
+                    const div = document.createElement('div');
+                    div.className = 'node-label';
+                    div.style.paddingLeft = '15px';
+                    div.innerHTML = `<span class="node-icon icon-file">📄</span> ${p.prefab_name}`;
+                    div.onclick = () => {
+                        document.querySelectorAll('.node-label').forEach(el => el.classList.remove('active'));
+                        div.classList.add('active');
+                        loadPrefab(p);
+                    }
+                    container.appendChild(div);
+                }
+            });
+        });
+
+        // --- Main Content View ---
+        function loadPrefab(prefab) {
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('content-view').classList.remove('hidden');
+
+            document.getElementById('view-title').innerText = prefab.prefab_name;
+            document.getElementById('view-path').innerText = prefab.relative_path_from_root;
+            document.getElementById('stat-chests').innerText = prefab.total_chests;
+            document.getElementById('stat-tables').innerText = Object.keys(prefab.tier_counts).length;
+
+            const container = document.getElementById('loot-container');
+            container.innerHTML = '';
+
+            // Group chests by ID
+            const groups = {};
+            prefab.chests.forEach(c => {
+                if(!groups[c.loot_table_id]) groups[c.loot_table_id] = [];
+                groups[c.loot_table_id].push(c.location);
+            });
+
+            // Iterate through loot tables found
+            Object.keys(groups).sort().forEach(id => {
+                const locations = groups[id];
+                const def = DATA.loot_table_definitions[id];
+
+                const card = document.createElement('div');
+                card.className = 'loot-card';
+
+                // Header
+                const header = document.createElement('div');
+                header.className = 'card-header';
+                header.innerHTML = `<span class="card-title">${id}</span> <span class="card-meta">${locations.length} Locations</span>`;
+                header.onclick = () => {
+                   const body = card.querySelector('.card-body');
+                   body.classList.toggle('hidden');
+                };
+
+                const body = document.createElement('div');
+                body.className = 'card-body';
+
+                // Coordinates
+                const coordsBox = document.createElement('div');
+                coordsBox.className = 'coords-box';
+                coordsBox.innerHTML = `
+                    <div class="coords-label">Coordinates (Click to Copy)</div>
+                    <div class="coords-grid">
+                        ${locations.map(l => `<div class="coord-chip" onclick="navigator.clipboard.writeText('${l.x} ${l.y} ${l.z}')">x:${l.x} y:${l.y} z:${l.z}</div>`).join('')}
+                    </div>
+                `;
+                body.appendChild(coordsBox);
+
+                // Table
+                const table = document.createElement('table');
+                table.className = 'loot-table';
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th class="col-name">Name / Logic</th>
+                            <th class="col-qty">Qty</th>
+                            <th class="col-weight">Weight</th>
+                            <th class="col-chance">Chance</th>
+                            <th class="col-type">Type</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${renderLootRows(def)}
+                    </tbody>
+                `;
+                body.appendChild(table);
+
+                card.appendChild(header);
+                card.appendChild(body);
+                container.appendChild(card);
+            });
+        }
+
+        // --- Recursive Table Row Renderer ---
+        function renderLootRows(node, depth = 0, totalWeight = 0) {
+            if(!node) return `<tr><td colspan="5" style="color:red; padding:20px;">Definition not found</td></tr>`;
+            
+            // Unwrap container wrapper
+            if(node.Container) return renderLootRows(node.Container, depth, totalWeight);
+            
+            // Handle Array (Usually Multiple)
+            if(Array.isArray(node)) {
+                return node.map(n => renderLootRows(n, depth, 0)).join('');
+            }
+
+            let html = '';
+            const indent = `<span class="tree-line">${"│ ".repeat(depth)}├─</span>`;
+            
+            if(node.Type === "Choice") {
+                // Calculate Sum for percentage
+                let sum = 0;
+                if(node.Containers) node.Containers.forEach(c => sum += (c.Weight || 0));
+
+                const range = (node.RollsMin === node.RollsMax) ? node.RollsMin : `${node.RollsMin}-${node.RollsMax}`;
+
+                html += `
+                    <tr style="background:#1f1f1f;">
+                        <td class="col-name">
+                            ${indent}
+                            <span class="badge badge-choice">SELECTION</span>
+                            <span class="logic-name text-select">Selects ${range}</span>
+                        </td>
+                        <td class="col-qty">-</td>
+                        <td class="col-weight">-</td>
+                        <td class="col-chance">-</td>
+                        <td class="col-type">Logic</td>
+                    </tr>
+                `;
+
+                if(node.Containers) {
+                    html += node.Containers.map(c => renderLootRows(c, depth + 1, sum)).join('');
+                }
+            }
+            else if(node.Type === "Multiple") {
+                html += `
+                    <tr style="background:#1f1f1f;">
+                        <td class="col-name">
+                            ${indent}
+                            <span class="badge badge-bundle">BUNDLE</span>
+                            <span class="logic-name text-bundle">Contains All</span>
+                        </td>
+                        <td class="col-qty">-</td>
+                        <td class="col-weight">-</td>
+                        <td class="col-chance">-</td>
+                        <td class="col-type">Logic</td>
+                    </tr>
+                `;
+                if(node.Containers) {
+                    html += node.Containers.map(c => renderLootRows(c, depth + 1, 0)).join('');
+                }
+            }
+            else if(node.Type === "Droplist") {
+                html += `
+                    <tr>
+                        <td class="col-name">
+                            ${indent}
+                            <span style="font-size:16px; vertical-align:middle;">🔗</span> 
+                            <span class="text-ref">${node.DroplistId}</span>
+                        </td>
+                        <td class="col-qty">-</td>
+                        <td class="col-weight">-</td>
+                        <td class="col-chance">-</td>
+                        <td class="col-type">Reference</td>
+                    </tr>
+                `;
+            }
+            else if(node.Type === "Single" && node.Item) {
+                const qty = (node.Item.QuantityMin === node.Item.QuantityMax) 
+                            ? node.Item.QuantityMin 
+                            : `${node.Item.QuantityMin}-${node.Item.QuantityMax}`;
+                
+                let chanceDisplay = "";
+                if(totalWeight > 0 && node.Weight) {
+                    const pct = ((node.Weight / totalWeight) * 100).toFixed(1);
+                    chanceDisplay = `${pct}%`;
+                } else if (!node.Weight) {
+                    chanceDisplay = "100%"; // Likely inside a 'Multiple' or single item
+                } else {
+                    chanceDisplay = "?"; 
+                }
+
+                html += `
+                    <tr>
+                        <td class="col-name">
+                            ${indent}
+                            <span style="color:#666;">📦</span> 
+                            <span class="item-name">${node.Item.ItemId}</span>
+                        </td>
+                        <td class="col-qty">${qty}</td>
+                        <td class="col-weight">${node.Weight || '-'}</td>
+                        <td class="col-chance" style="color:${totalWeight > 0 ? '#d7ba7d' : '#4ec9b0'}">${chanceDisplay}</td>
+                        <td class="col-type">Item</td>
+                    </tr>
+                `;
+            }
+
+            return html;
+        }
+
+    </script>
+</body>
+</html>

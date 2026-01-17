@@ -84,7 +84,7 @@ function buildSidebar(prefabs) {
     container.appendChild(renderTreeNode(root));
 }
 
-function renderTreeNode(obj) {
+function renderTreeNode(obj, expandAll = false) {
     const wrapper = document.createElement('div');
     const keys = Object.keys(obj).sort((a,b) => {
         const tA = obj[a]._type || 'folder';
@@ -99,20 +99,36 @@ function renderTreeNode(obj) {
         const isFolder = item._type === 'folder';
         const div = document.createElement('div');
         div.className = 'node-item';
+        
+        // Auto-expand if requested or marked
+        if(isFolder && (expandAll || item._expanded)) {
+            div.classList.add('expanded');
+        }
 
         const label = document.createElement('div');
         label.className = 'node-label';
         
         if(isFolder) {
-            label.innerHTML = `<span class="arrow">▶</span><span class="node-icon icon-folder">📁</span> ${key}`;
+            label.innerHTML = `
+                <span class="arrow">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </span>
+                <span class="node-icon icon-folder">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                </span> 
+                <span class="node-name">${key}</span>`;
+            
             label.onclick = () => {
-                const children = div.querySelector('.node-children');
-                const arrow = label.querySelector('.arrow');
-                children.classList.toggle('open');
-                arrow.style.transform = children.classList.contains('open') ? 'rotate(90deg)' : 'rotate(0deg)';
+                div.classList.toggle('expanded');
             };
         } else {
-            label.innerHTML = `<span class="arrow"></span><span class="node-icon icon-file">📄</span> ${key}`;
+            label.innerHTML = `
+                <span class="arrow"></span>
+                <span class="node-icon icon-file">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+                </span> 
+                <span class="node-name">${key}</span>`;
+            
             label.onclick = () => {
                 document.querySelectorAll('.node-label').forEach(el => el.classList.remove('active'));
                 label.classList.add('active');
@@ -124,7 +140,7 @@ function renderTreeNode(obj) {
         if(isFolder) {
             const childrenDiv = document.createElement('div');
             childrenDiv.className = 'node-children';
-            childrenDiv.appendChild(renderTreeNode(item._children));
+            childrenDiv.appendChild(renderTreeNode(item._children, expandAll));
             div.appendChild(childrenDiv);
         }
         wrapper.appendChild(div);
@@ -157,75 +173,40 @@ document.getElementById('search').addEventListener('input', (e) => {
     // Clear container
     container.innerHTML = '';
 
-    // Helper to render groups
-    const renderGroups = (groupedResults, totalCount, term) => {
-        if (totalCount > 0) {
-            // Sort structure names alphabetically
-            const sortedKeys = Array.from(groupedResults.keys()).sort();
+    // Helper to build tree from filtered results
+    const buildSearchTree = (prefabs) => {
+        const root = {};
+        prefabs.forEach(p => {
+            const pathParts = p.relative_path_from_root.replace(/\\/g, '/').split('/');
+            let current = root;
             
-            sortedKeys.forEach(structureName => {
-                const prefabs = groupedResults.get(structureName);
-                
-                const groupDiv = document.createElement('div');
-                groupDiv.className = 'search-group';
-                
-                // Header
-                const header = document.createElement('div');
-                header.className = 'search-group-header';
-                header.innerHTML = `<span>${structureName}</span> <span style="font-size: 10px; opacity: 0.7;">${prefabs.length}</span>`;
-                header.onclick = () => {
-                    groupDiv.classList.toggle('collapsed');
-                };
-                groupDiv.appendChild(header);
-                
-                // Items container
-                const itemsContainer = document.createElement('div');
-                itemsContainer.className = 'search-group-items';
-                
-                prefabs.forEach(p => {
-                    const div = document.createElement('div');
-                    div.className = 'node-label';
-                    div.innerHTML = `<span class="node-icon icon-file">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
-                    </span> ${p.prefab_name}`;
-                    div.onclick = () => {
-                        document.querySelectorAll('.node-label').forEach(el => el.classList.remove('active'));
-                        div.classList.add('active');
-                        loadPrefab(p);
-                    }
-                    itemsContainer.appendChild(div);
-                });
-                
-                groupDiv.appendChild(itemsContainer);
-                container.appendChild(groupDiv);
+            pathParts.forEach((part, i) => {
+                if(i === pathParts.length - 1) {
+                    current[part] = { _type: 'file', _data: p };
+                } else {
+                    if(!current[part]) current[part] = { _type: 'folder', _children: {}, _expanded: true }; // Mark as expanded for search
+                    current = current[part]._children;
+                }
             });
-            
-            container.insertAdjacentHTML('afterbegin', `<div style="padding: 10px; color: #666; font-size: 11px; border-bottom: 1px solid #222; margin-bottom: 5px;">Found ${totalCount} results for "${term}"</div>`);
-        } else {
-            container.innerHTML = '<div style="padding: 20px; color: #666; text-align: center;">No matches found</div>';
-        }
+        });
+        return root;
     };
-    
-    const groupedResults = new Map(); // Map structure_name -> prefabs[]
-    const addedPrefabNames = new Set(); // Track added prefabs to avoid duplicates
+
+    const matchedPrefabs = [];
+    const addedPrefabNames = new Set();
     let totalCount = 0;
 
     // 1. Search by Prefab Name
     DATA.prefabs.forEach(p => {
         if(p.prefab_name.toLowerCase().includes(term)) {
-            const structureName = p.structure_name || 'Other';
-            if(!groupedResults.has(structureName)) {
-                groupedResults.set(structureName, []);
-            }
-            groupedResults.get(structureName).push(p);
+            matchedPrefabs.push(p);
             addedPrefabNames.add(p.prefab_name);
             totalCount++;
         }
     });
 
-    // 2. Search by Item Content (if not already added)
+    // 2. Search by Item Content
     DATA.prefabs.forEach(prefab => {
-        // Skip if already found by name
         if(addedPrefabNames.has(prefab.prefab_name)) return;
 
         let hasItem = false;
@@ -237,16 +218,18 @@ document.getElementById('search').addEventListener('input', (e) => {
         });
         
         if(hasItem) {
-            const structureName = prefab.structure_name || 'Other';
-            if(!groupedResults.has(structureName)) {
-                groupedResults.set(structureName, []);
-            }
-            groupedResults.get(structureName).push(prefab);
+            matchedPrefabs.push(prefab);
             totalCount++;
         }
     });
 
-    renderGroups(groupedResults, totalCount, term);
+    if (totalCount > 0) {
+        const searchTree = buildSearchTree(matchedPrefabs);
+        container.insertAdjacentHTML('beforeend', `<div style="padding: 10px; color: #888; font-size: 11px; border-bottom: 1px solid #333; margin-bottom: 5px;">Found ${totalCount} results for "${term}"</div>`);
+        container.appendChild(renderTreeNode(searchTree, true)); // Pass true to expand all
+    } else {
+        container.innerHTML = '<div style="padding: 20px; color: #666; text-align: center;">No matches found</div>';
+    }
 });
 
 // Helper: Check if loot table contains an item
@@ -594,11 +577,20 @@ window.togglePythonCode = function() {
 };
 
 // Close modal on background click
+// Close modal on background click (prevent closing when dragging text)
+let modalMouseDownTarget = null;
+
+document.addEventListener('mousedown', (e) => {
+    modalMouseDownTarget = e.target;
+});
+
 document.addEventListener('click', (e) => {
     const modal = document.getElementById('help-modal');
-    if(e.target === modal) {
+    // Only close if mousedown AND click happened on the modal background
+    if(e.target === modal && modalMouseDownTarget === modal) {
         closeHelp();
     }
+    modalMouseDownTarget = null;
 });
 
 // Close modal on Escape key

@@ -58,6 +58,14 @@ for item_id in sorted(item_ids):
 
     # 3. Fuzzy match / Substring search
     # Find closest match in icon_files
+    
+    # Try stripping "_Item" suffix
+    if item_id.endswith('_Item'):
+        stripped = item_id[:-5]
+        if stripped.lower() in icon_map:
+            mappings[item_id] = icon_map[stripped.lower()].replace('.png', '')
+            continue
+
     # Filter icons that share the same prefix (e.g. "Weapon_", "Food_")
     prefix = item_id.split('_')[0]
     candidates = [f for f in icon_files if f.startswith(prefix)]

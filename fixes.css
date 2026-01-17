@@ -1,4 +1,4 @@
-﻿/* CSS Fixes - Load this AFTER style.css */
+/* CSS Fixes - Load this AFTER style.css */
 
 /* --- Layout Fixes --- */
 .content-area {
@@ -12,32 +12,66 @@
     flex-shrink: 0;
 }
 
+/* Sidebar Layout: Fixed Header, Scrolling Content */
 .sidebar {
-    overflow-y: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    /* Prevent sidebar itself from scrolling */
+}
+
+.sidebar-header {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background: #222;
+    border-bottom: 1px solid #333;
+}
+
+.sidebar-header>div {
+    display: flex;
+    gap: 5px;
+    /* Icons next to each other */
 }
 
 .tree-root {
-    overflow-y: visible !important;
+    flex: 1;
+    overflow-y: auto !important;
+    /* Only tree scrolls */
+    overflow-x: auto !important;
+    padding: 10px;
+    /* Added outer padding */
+    padding-bottom: 20px;
 }
 
 /* --- Sidebar Nesting & Styling --- */
-.node-children {
-    padding-left: 8px !important;
-    /* Significantly reduced padding */
+.node-item>.node-children {
+    display: none;
+    padding-left: 12px !important;
+    /* Increased indentation */
     border-left: 1px solid #333;
-    margin-left: 4px;
+    margin-left: 6px;
+}
+
+.node-item.expanded>.node-children {
+    display: block;
 }
 
 .node-label {
-    padding: 2px 6px !important;
-    /* Tighter vertical padding */
+    padding: 4px 6px !important;
+    /* Increased padding */
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 13px;
+    gap: 8px;
+    /* Increased gap */
+    font-size: 14px;
+    /* Increased font size */
     color: #ccc;
     cursor: pointer;
     border-radius: 3px;
+    user-select: none;
 }
 
 .node-label:hover {
@@ -50,11 +84,23 @@
     color: white;
 }
 
+/* Arrow Rotation */
+.node-item .arrow svg,
+.node-item .node-arrow svg {
+    transition: transform 0.2s;
+    transform: rotate(0deg);
+}
+
+.node-item.expanded>.node-label .arrow svg,
+.node-item.expanded>.node-header .node-arrow svg {
+    transform: rotate(90deg);
+}
+
 /* --- Icons --- */
 .btn-icon {
-    width: 32px;
-    height: 32px;
-    padding: 6px;
+    width: 28px;
+    height: 28px;
+    padding: 5px;
     border-radius: 4px;
     background: transparent;
     border: 1px solid transparent;
@@ -87,7 +133,9 @@
 
 /* --- Search Box --- */
 .search-box {
+    flex-shrink: 0;
     position: relative;
+    /* For absolute positioning of clear button */
     padding: 10px;
     background: #1a1a1a;
     border-bottom: 1px solid #333;
@@ -96,7 +144,6 @@
 .search-box input {
     width: 100%;
     padding: 8px 32px 8px 10px;
-    /* Space for clear button */
     background: #0f0f0f;
     border: 1px solid #333;
     border-radius: 4px;
@@ -123,6 +170,7 @@
     align-items: center;
     justify-content: center;
     border-radius: 50%;
+    z-index: 10;
 }
 
 .search-clear:hover {
@@ -135,53 +183,8 @@
     height: 14px;
 }
 
-.search-clear.hidden {
-    display: none;
-}
-
-/* --- Search Results Grouping --- */
-.search-group {
-    margin-bottom: 2px;
-}
-
-.search-group-header {
-    padding: 8px 12px;
-    background: #222;
-    color: #aaa;
-    font-size: 11px;
-    font-weight: 600;
-    /* Fixed typo */
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-left: 3px solid var(--accent, #3b82f6);
-    cursor: pointer;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    user-select: none;
-}
-
-.search-group-header:hover {
-    background: #2a2a2a;
-    color: white;
-}
-
-.search-group-header::after {
-    content: '▼';
-    font-size: 9px;
-    transition: transform 0.2s;
-}
-
-.search-group.collapsed .search-group-header::after {
-    transform: rotate(-90deg);
-}
-
-.search-group-items {
-    display: block;
-}
-
-.search-group.collapsed .search-group-items {
-    display: none;
+.hidden {
+    display: none !important;
 }
 
 /* --- Help Modal --- */

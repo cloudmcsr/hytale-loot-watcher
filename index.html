@@ -112,16 +112,22 @@
 
                 <section class="help-section">
                     <h3>Generating Data for Other Versions</h3>
-                    <p class="help-desc">All Hytale versions include the necessary files. You need to extract specific folders from the game's Assets archive.</p>
+                    <p class="help-desc">You can generate data for any Hytale version using the files included with the game. No coding skills required!</p>
                     
-                    <h4>Step 1: Locate Game Files</h4>
-                    <p class="help-desc">Navigate to your Hytale installation:</p>
-                    <pre class="code-block"><code>...\Hytale\Install\package\latest\Assets.zip</code></pre>
+                    <h4>Step 1: Locate Assets.zip</h4>
+                    <p class="help-desc">Go to your Hytale installation folder and find this file:</p>
+                    <pre class="code-block"><code>.../Hytale/Install/package/latest/Assets.zip</code></pre>
 
                     <h4>Step 2: Extract Required Folders</h4>
-                    <p class="help-desc">From <code>Assets.zip</code>, extract these folders from <code>Assets/Server/</code>:</p>
+                    <p class="help-desc">Open <code>Assets.zip</code> and navigate into <code>Assets/Server/</code>.</p>
+                    <p class="help-desc">Extract these two folders to the same folder as this viewer:</p>
                     <ul class="help-list">
-                        <li><code>Drops\Prefabs</code> - Contains loot table definitions</li>
+                        <li><code>Prefabs</code> (contains structure data)</li>
+                        <li><code>Drops/Prefabs</code> (contains loot tables)</li>
+                    </ul>
+
+                    <h4>Step 3: Run the Script</h4>
+                    <p class="help-desc">Run the script below to generate a new <code>mapped_prefabs_data.json</code> file.</p>
                         <button class="code-toggle" onclick="togglePythonCode()">Show Full Source ▼</button>
                         <pre class="code-block code-full hidden" id="python-code"><code>import json
 from pathlib import Path
@@ -218,19 +224,6 @@ def main():
     
     print(f"Writing to {OUTPUT_FILE}...")
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        json.dump(output, f, indent=2)
-    
-    print(f"Success! {len(prefabs_data)} structures, {len(filtered_definitions)} loot tables")
-
-if __name__ == "__main__":
-    main()</code></pre>
-                    </div>
-                </section>
-
-                <section class="help-section">
-                    <h3>Tips &amp; Tricks</h3>
-                    <ul class="help-list">
-                        <li>Hover over item icons for detailed tooltips</li>
                         <li>Tier breakdown shown in stats (e.g. <code>Tier 1: 5 | Tier 3: 2</code>)</li>
                         <li>Missing icons show "?" - run <code>showMissingIconsReport()</code> in console</li>
                         <li>Press <kbd>Esc</kbd> to close this help dialog</li>

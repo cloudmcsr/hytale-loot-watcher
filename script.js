@@ -405,36 +405,52 @@ window.filterItems = function(searchTerm) {
 // --- Grid Renderer ---
 let selectionCounter = 0;
 
-function renderLootGrid(node, totalWeight = 0) {
+function formatPct(chance) {
+    const pct = Math.round(chance * 1000) / 10;
+    return (pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(1)) + '%';
+}
+
+function renderLootGrid(node, parentChance = 1) {
     if(!node) return `<div style="color:red; padding:10px;">Definition not found</div>`;
-    
-    if(node.Container) return renderLootGrid(node.Container, totalWeight);
-    
+
+    if(node.Container) return renderLootGrid(node.Container, parentChance);
+
     if(Array.isArray(node)) {
-        return node.map(n => renderLootGrid(n, 0)).join('');
+        return node.map(n => renderLootGrid(n, parentChance)).join('');
     }
 
     let html = '';
-    
+
     if(node.Type === "Choice") {
-        let sum = 0;
-        if(node.Containers) node.Containers.forEach(c => sum += (c.Weight || 0));
-        const range = (node.RollsMin === node.RollsMax) ? node.RollsMin : `${node.RollsMin}-${node.RollsMax}`;
-        
-        const selId = `sel-${selectionCounter++}`;
-        html += `<div class="logic-row expanded" onclick="toggleSelection('${selId}')">&#9660; SELECTION (Pick ${range})</div>`;
-        html += `<div class="selection-content" id="${selId}">`;
-        if(node.Containers) {
-            html += node.Containers.map(c => renderLootGrid(c, sum)).join('');
+        const members = node.Containers || [];
+        const sum = members.reduce((s, c) => s + (c.Weight || 0), 0);
+        const rolls = (node.RollsMin === undefined && node.RollsMax === undefined)
+            ? 1
+            : (node.RollsMin + node.RollsMax) / 2;
+        const trigger = node.Weight !== undefined ? node.Weight / 100 : 1;
+        const rows = rolls === 1 ? '1' : `${node.RollsMin}-${node.RollsMax}`;
+        let rowLabel = `SELECTION (Pick ${rows})`;
+        if(node.Weight !== undefined) {
+            rowLabel += ` <span class="row-chance">${formatPct(trigger)}</span>`;
         }
+
+        const selId = `sel-${selectionCounter++}`;
+        html += `<div class="logic-row expanded" onclick="toggleSelection('${selId}')">&#9660; ${rowLabel}</div>`;
+        html += `<div class="selection-content" id="${selId}">`;
+        html += members.map(c => {
+            const cond = sum > 0
+                ? 1 - Math.pow(1 - (c.Weight || 0) / sum, rolls)
+                : 1;
+            return renderLootGrid(c, parentChance * trigger * cond);
+        }).join('');
         html += `</div>`;
     }
     else if(node.Type === "Multiple") {
         const selId = `sel-${selectionCounter++}`;
-        html += `<div class="logic-row bundle expanded" onclick="toggleSelection('${selId}')">&#9660; BUNDLE (All)</div>`; 
+        html += `<div class="logic-row bundle expanded" onclick="toggleSelection('${selId}')">&#9660; BUNDLE (All)</div>`;
         html += `<div class="selection-content" id="${selId}">`;
         if(node.Containers) {
-            html += node.Containers.map(c => renderLootGrid(c, 0)).join('');
+            html += node.Containers.map(c => renderLootGrid(c, parentChance)).join('');
         }
         html += `</div>`;
     }
@@ -442,37 +458,38 @@ function renderLootGrid(node, totalWeight = 0) {
         const safeId = node.DroplistId.replace(/[^a-zA-Z0-9]/g, '');
         html += `
             <div class="logic-row" style="border-color:var(--color-ref); cursor:pointer;" onclick="toggleDroplistGrid(this, '${node.DroplistId}')">
-                🔗 Included: ${node.DroplistId}
+                &#128279; Included: ${node.DroplistId}
             </div>
             <div class="droplist-content" id="dl-${safeId}">
         `;
         // Auto-expand by rendering immediately
         const def = DATA.loot_table_definitions[node.DroplistId];
         if(def) {
-            html += `<div class="item-grid" style="margin-left:10px; border-left:2px solid #444;">${renderLootGrid(def)}</div>`;
+            html += `<div class="item-grid" style="margin-left:10px; border-left:2px solid #444;">${renderLootGrid(def, parentChance)}</div>`;
         } else {
             html += '<div style="color:red; padding:5px;">Definition not found</div>';
         }
         html += `</div>`;
     }
+    else if(node.Type === "Empty") {
+        html += `
+            <div class="item-slot item-slot-nothing" title="Nothing (no item from this pick chance)">
+                <span class="item-chance">${formatPct(parentChance)}</span>
+            </div>
+        `;
+    }
     else if(node.Type === "Single" && node.Item) {
-        const qty = (node.Item.QuantityMin === node.Item.QuantityMax) 
-                    ? node.Item.QuantityMin 
+        const qty = (node.Item.QuantityMin === node.Item.QuantityMax)
+                    ? node.Item.QuantityMin
                     : `${node.Item.QuantityMin}-${node.Item.QuantityMax}`;
-        
-        let chanceDisplay = "";
-        if(totalWeight > 0 && node.Weight) {
-            const pct = ((node.Weight / totalWeight) * 100).toFixed(1);
-            chanceDisplay = `${pct}%`;
-        }
-
+        const chanceDisplay = formatPct(parentChance);
         const iconPath = getIconPath(node.Item.ItemId);
 
         html += `
             <div class="item-slot" title="${node.Item.ItemId} (Qty: ${qty})" onmouseenter="showTooltip(this, '${node.Item.ItemId}', '${qty}', '${chanceDisplay}')" onmouseleave="hideTooltip()">
                 <img src="${iconPath}" onerror="trackMissingIcon('${node.Item.ItemId}', this)" data-item-id="${node.Item.ItemId}">
                 <span class="item-qty">${qty}</span>
-                ${chanceDisplay ? `<span class="item-chance">${chanceDisplay}</span>` : ''}
+                <span class="item-chance">${chanceDisplay}</span>
             </div>
         `;
     }

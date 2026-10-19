@@ -42,8 +42,10 @@ const ICON_MAPPINGS = {
 };
 
 function getIconPath(itemId) {
-    if (ICON_MAPPINGS[itemId]) {
-        return `ItemsGenerated/${ICON_MAPPINGS[itemId]}.png`;
+    // state/quality variants ("*Item_State_Uncommon") share the base item's icon
+    const s = itemId.replace(/^\*/, '').replace(/_State_[A-Za-z]+$/, '');
+    if (ICON_MAPPINGS[s]) {
+        return `ItemsGenerated/${ICON_MAPPINGS[s]}.png`;
     }
-    return `ItemsGenerated/${itemId}.png`;
+    return `ItemsGenerated/${s}.png`;
 }

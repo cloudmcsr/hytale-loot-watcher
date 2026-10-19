@@ -459,6 +459,59 @@ body {
     font-family: var(--font-mono);
 }
 
+.row-sub {
+    color: #888;
+    font-weight: 400;
+    font-size: 11px;
+    margin-left: 8px;
+}
+
+/* Category dropdown in sidebar header */
+.category-select {
+    background: #1b1f27;
+    color: #ddd;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    outline: none;
+    cursor: pointer;
+    max-width: 130px;
+}
+
+/* Mob portrait + title row in the top bar */
+.view-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.view-head-text {
+    min-width: 0;
+}
+
+.view-portrait {
+    width: 42px;
+    height: 42px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background: #1b1f27;
+    object-fit: contain;
+    image-rendering: pixelated;
+    flex-shrink: 0;
+}
+
+/* Sidebar leaf thumbnails (mob portraits) */
+.node-thumb {
+    width: 15px;
+    height: 15px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    display: block;
+    margin: auto;
+}
+
 .item-slot-nothing {
     background: #191919;
     border: 2px dashed #333;
@@ -669,6 +722,44 @@ body {
 .logic-row.contains-match {
     border-left-color: var(--accent);
     color: white;
+}
+
+/* Search result matching highlight */
+.node-name mark {
+    background: rgba(59, 130, 246, 0.28);
+    color: #fff;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+/* Sidebar search results banner */
+.search-results-info {
+    padding: 10px;
+    color: #888;
+    font-size: 11px;
+    border-bottom: 1px solid #333;
+    margin-bottom: 5px;
+}
+
+/* Loot card collapse chevron */
+.card-chevron {
+    display: flex;
+    align-items: center;
+    color: #777;
+}
+
+.card-chevron svg {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.2s;
+}
+
+.loot-card.card-collapsed .card-chevron svg {
+    transform: rotate(-90deg);
+}
+
+.loot-card.card-collapsed .card-header {
+    opacity: 0.75;
 }
 
 .card-meta-group {

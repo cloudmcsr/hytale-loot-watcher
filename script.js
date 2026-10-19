@@ -1,6 +1,7 @@
 let DATA = null;
 let searchTerm = '';
 let matchesOnly = false;
+let activeCategory = 'All';
 
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -16,10 +17,11 @@ window.addEventListener('DOMContentLoaded', () => {
     if(window.DEFAULT_DATA) {
         DATA = window.DEFAULT_DATA;
         document.getElementById('upload-overlay').classList.add('hidden');
-        buildSidebar(DATA.prefabs);
+        initCategorySelect();
+        buildSidebar();
     } else {
         // Fallback to fetch if data.js missing/empty
-        fetch('mapped_prefabs_data.json')
+        fetch('data/mapped_prefabs_data.json')
             .then(response => {
                 if(response.ok) return response.json();
                 throw new Error('Default file not found');
@@ -27,7 +29,8 @@ window.addEventListener('DOMContentLoaded', () => {
             .then(json => {
                 DATA = json;
                 document.getElementById('upload-overlay').classList.add('hidden');
-                buildSidebar(DATA.prefabs);
+                initCategorySelect();
+                buildSidebar();
             })
             .catch(err => console.log('Waiting for file upload...', err));
     }
@@ -53,9 +56,11 @@ function loadJSON(file) {
     reader.onload = e => {
         try {
             DATA = JSON.parse(e.target.result);
+            if(!DATA.drops) DATA.drops = [];
             overlay.classList.add('fade-out');
             setTimeout(() => overlay.classList.add('hidden'), 300);
-            buildSidebar(DATA.prefabs);
+            initCategorySelect();
+            buildSidebar();
         } catch(err) {
             alert("Invalid JSON file");
             console.error(err);
@@ -64,15 +69,82 @@ function loadJSON(file) {
     reader.readAsText(file);
 }
 
-// --- Sidebar Tree ---
-function buildTree(prefabs) {
+// --- Unified entries (prefab | drop | loot table) ---
+// Every browsable leaf is one entry; the tree is built from these.
+function collectEntries() {
+    const entries = [];
+
+    (DATA.prefabs || []).forEach(p => entries.push({
+        kind: 'prefab',
+        path: ['Structures', ...p.relative_path_from_root.replace(/\\/g, '/').split('/')],
+        name: p.prefab_name,
+        category: 'Structures',
+        data: p
+    }));
+
+    (DATA.drops || []).forEach(d => {
+        const rest = d.category && d.path.startsWith(d.category + '/')
+            ? d.path.slice(d.category.length + 1).split('/')
+            : [d.name];
+        entries.push({
+            kind: 'drop',
+            path: ['Drops', ...(d.category ? [d.category] : []), ...rest],
+            name: d.name,
+            category: d.category || 'Drops',
+            icon: d.icon,
+            root: d.root
+        });
+    });
+
+    Object.keys(DATA.loot_table_definitions || {}).sort().forEach(id => entries.push({
+        kind: 'table',
+        path: ['Loot Tables', id],
+        name: id,
+        category: 'Loot Tables',
+        root: DATA.loot_table_definitions[id]
+    }));
+
+    return entries;
+}
+
+function filteredEntries() {
+    const all = collectEntries();
+    if(activeCategory === 'All') return all;
+    return all.filter(e => e.category === activeCategory);
+}
+
+function initCategorySelect() {
+    const select = document.getElementById('category-select');
+    if(!select) return;
+
+    const cats = new Set(['All', 'Structures', 'Loot Tables']);
+    (DATA.drops || []).forEach(d => d.category && cats.add(d.category));
+
+    select.innerHTML = [...cats]
+        .sort((a, b) => {
+            if(a === 'All') return -1;
+            if(b === 'All') return 1;
+            return a.localeCompare(b);
+        })
+        .map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`)
+        .join('');
+    select.value = activeCategory;
+
+    select.onchange = () => {
+        activeCategory = select.value;
+        clearSearch(true);
+        buildSidebar();
+    };
+}
+
+// Generic tree from entries; leaf _data = entry
+function buildTree(entries) {
     const root = {};
-    prefabs.forEach(p => {
-        const pathParts = p.relative_path_from_root.replace(/\\/g, '/').split('/');
+    entries.forEach(entry => {
         let current = root;
-        pathParts.forEach((part, i) => {
-            if(i === pathParts.length - 1) {
-                current[part] = { _type: 'file', _data: p };
+        entry.path.forEach((part, i) => {
+            if(i === entry.path.length - 1) {
+                current[part] = { _type: 'file', _data: entry };
             } else {
                 if(!current[part]) current[part] = { _type: 'folder', _children: {} };
                 current = current[part]._children;
@@ -98,13 +170,24 @@ function countTree(node) {
     return count;
 }
 
-function buildSidebar(prefabs) {
+function buildSidebar() {
     const container = document.getElementById('sidebar-root');
     container.innerHTML = '';
-    container.appendChild(renderTreeNode(buildTree(prefabs)));
+    const entries = filteredEntries();
+    const tree = buildTree(entries);
+    countTree(tree);
+    container.appendChild(renderTreeNode(tree, false, searchTerm));
 }
 
-function renderTreeNode(obj, expandAll = false) {
+function renderHighlightedName(key, highlight) {
+    if(!highlight) return escapeHtml(key);
+    const lower = key.toLowerCase();
+    const i = lower.indexOf(highlight.toLowerCase());
+    if(i < 0) return escapeHtml(key);
+    return `${escapeHtml(key.slice(0, i))}<mark>${escapeHtml(key.slice(i, i + highlight.length))}</mark>${escapeHtml(key.slice(i + highlight.length))}`;
+}
+
+function renderTreeNode(obj, expandAll = false, highlight = '') {
     const wrapper = document.createElement('div');
     const keys = Object.keys(obj).sort((a,b) => {
         const tA = obj[a]._type || 'folder';
@@ -136,23 +219,25 @@ function renderTreeNode(obj, expandAll = false) {
                 <span class="node-icon icon-folder">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 </span> 
-                <span class="node-name">${escapeHtml(key)} ${item._count ? `<span style="color:#666; font-size:11px; margin-left:4px;">(${item._count})</span>` : ''}</span>`;
+                <span class="node-name">${renderHighlightedName(key, highlight)} ${item._count ? `<span style="color:#666; font-size:11px; margin-left:4px;">(${item._count})</span>` : ''}</span>`;
             
             label.onclick = () => {
                 div.classList.toggle('expanded');
             };
         } else {
+            const entry = item._data;
+            const iconMarkup = entry.icon
+                ? `<img class="node-thumb" src="${escapeAttr(entry.icon)}" alt="">`
+                : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`;
             label.innerHTML = `
                 <span class="arrow"></span>
-                <span class="node-icon icon-file">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
-                </span> 
-                <span class="node-name">${escapeHtml(key)}</span>`;
-            
+                <span class="node-icon icon-file">${iconMarkup}</span>
+                <span class="node-name">${renderHighlightedName(key, highlight)}</span>`;
+
             label.onclick = () => {
                 document.querySelectorAll('.node-label').forEach(el => el.classList.remove('active'));
                 label.classList.add('active');
-                loadPrefab(item._data);
+                loadEntry(entry);
             }
         }
 
@@ -160,7 +245,7 @@ function renderTreeNode(obj, expandAll = false) {
         if(isFolder) {
             const childrenDiv = document.createElement('div');
             childrenDiv.className = 'node-children';
-            childrenDiv.appendChild(renderTreeNode(item._children, expandAll));
+            childrenDiv.appendChild(renderTreeNode(item._children, expandAll, highlight));
             div.appendChild(childrenDiv);
         }
         wrapper.appendChild(div);
@@ -168,12 +253,12 @@ function renderTreeNode(obj, expandAll = false) {
     return wrapper;
 }
 
-// --- Smart Search (auto-detects prefab vs item search) ---
-window.clearSearch = function() {
+// --- Smart Search (name match + item content match, across all browsable entries) ---
+window.clearSearch = function(keepCategory = false) {
     document.getElementById('search').value = '';
     searchTerm = '';
     document.getElementById('search-clear').classList.add('hidden');
-    buildSidebar(DATA.prefabs);
+    if(!keepCategory) buildSidebar();
     applyFilter();
 };
 
@@ -183,52 +268,60 @@ document.getElementById('search').addEventListener('input', (e) => {
     searchTimer = setTimeout(() => runSearch(e.target.value), 150);
 });
 
+// Does the entry itself swing items? (content check, recursive via Droplist)
+function entryContainsItem(entry, term) {
+    if(entry.kind === 'prefab') {
+        const chests = entry.data.chests || [];
+        return chests.some(chest => {
+            const lootDef = DATA.loot_table_definitions[chest.loot_table_id];
+            return lootDef && containsItem(lootDef, term);
+        });
+    }
+    return entry.root ? containsItem(entry.root, term) : false;
+}
+
 function runSearch(rawValue) {
     const term = rawValue.toLowerCase().trim();
     const container = document.getElementById('sidebar-root');
     const clearBtn = document.getElementById('search-clear');
     searchTerm = term;
 
-    if(term) {
-        clearBtn.classList.remove('hidden');
-    } else {
+    if(!term) {
         clearBtn.classList.add('hidden');
-        buildSidebar(DATA.prefabs);
+        buildSidebar();
         applyFilter();
         return;
     }
 
-    const matchedPrefabs = [];
-    const addedPrefabNames = new Set();
-    let totalCount = 0;
+    clearBtn.classList.remove('hidden');
 
-    DATA.prefabs.forEach(p => {
-        if(p.prefab_name.toLowerCase().includes(term)) {
-            matchedPrefabs.push(p);
-            addedPrefabNames.add(p.prefab_name);
-            totalCount++;
+    const matches = [];
+    let nameCount = 0;
+    let itemCount = 0;
+
+    filteredEntries().forEach(entry => {
+        if(entry.name.toLowerCase().includes(term)) {
+            matches.push(entry);
+            nameCount++;
         }
     });
 
-    DATA.prefabs.forEach(prefab => {
-        if(addedPrefabNames.has(prefab.prefab_name)) return;
-        const hasItem = prefab.chests.some(chest => {
-            const lootDef = DATA.loot_table_definitions[chest.loot_table_id];
-            return lootDef && containsItem(lootDef, term);
-        });
-        if(hasItem) {
-            matchedPrefabs.push(prefab);
-            totalCount++;
+    filteredEntries().forEach(entry => {
+        if(nameCount && matches.some(m => m === entry)) return;
+        if(entryContainsItem(entry, term)) {
+            matches.push(entry);
+            itemCount++;
         }
     });
 
+    const totalCount = nameCount + itemCount;
     container.innerHTML = '';
 
     if(totalCount > 0) {
-        const searchTree = buildTree(matchedPrefabs);
+        const searchTree = buildTree(matches);
         countTree(searchTree);
-        container.insertAdjacentHTML('beforeend', `<div style="padding: 10px; color: #888; font-size: 11px; border-bottom: 1px solid #333; margin-bottom: 5px;">Found ${totalCount} results for "${escapeHtml(term)}"</div>`);
-        container.appendChild(renderTreeNode(searchTree, false));
+        container.insertAdjacentHTML('beforeend', `<div class="search-results-info">Found ${totalCount} result${totalCount === 1 ? '' : 's'} for "${escapeHtml(term)}" (${nameCount} by name, ${itemCount} by item)</div>`);
+        container.appendChild(renderTreeNode(searchTree, true, term));
     } else {
         container.innerHTML = '<div style="padding: 20px; color: #666; text-align: center;">No matches found</div>';
     }
@@ -285,14 +378,88 @@ function calculateTierStats(chests) {
     return stats;
 }
 
+// Collapse/expand a loot card body, syncing chevron + aria state
+function setCardCollapsed(card, collapsed) {
+    const body = card.querySelector('.card-body');
+    const header = card.querySelector('.card-header');
+    if(!body) return;
+    body.classList.toggle('hidden', collapsed);
+    card.classList.toggle('card-collapsed', collapsed);
+    if(header) header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
+
 // --- Main Content View ---
-function loadPrefab(prefab) {
+function loadEntry(entry) {
     document.getElementById('empty-state').classList.add('hidden');
     document.getElementById('content-view').classList.remove('hidden');
 
-    document.getElementById('view-title').innerText = prefab.prefab_name;
-    document.getElementById('view-path').innerText = prefab.relative_path_from_root;
-    
+    const portrait = document.getElementById('view-icon');
+    portrait.style.display = entry.icon ? '' : 'none';
+    if(entry.icon) portrait.src = escapeAttr(entry.icon);
+
+    const statsItems = document.querySelectorAll('.stats-bar .stat-item');
+
+    if(entry.kind === 'prefab') {
+        document.getElementById('view-title').innerText = entry.name;
+        document.getElementById('view-path').innerText = entry.data.relative_path_from_root;
+        statsItems.forEach(s => s.style.display = '');
+        loadPrefabView(entry);
+    } else {
+        document.getElementById('view-title').innerText = entry.name;
+        document.getElementById('view-path').innerText =
+            entry.kind === 'drop' ? 'Drops/' + entry.path.join('/') : 'Loot Tables/' + entry.name;
+        statsItems.forEach(s => s.style.display = 'none');
+        loadSimpleView(entry);
+    }
+
+    applyFilter();
+}
+
+// New loot-card for any entry (drop / loot table): one grid, no locations
+function buildLootCard(title, canCollapse, gridHtml) {
+    const card = document.createElement('div');
+    card.className = 'loot-card';
+
+    const header = document.createElement('div');
+    header.className = 'card-header';
+    header.setAttribute('role', 'button');
+    header.setAttribute('aria-expanded', 'true');
+    header.innerHTML = `<span class="card-title">${escapeHtml(title)}</span>
+        <span class="card-meta-group">
+            <span class="card-meta card-meta-items hidden"></span>
+            <span class="card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+        </span>`;
+    header.onclick = () => setCardCollapsed(card, !card.classList.contains('card-collapsed'));
+
+    const body = document.createElement('div');
+    body.className = 'card-body';
+
+    const grid = document.createElement('div');
+    grid.className = 'item-grid';
+    grid.innerHTML = gridHtml;
+    body.appendChild(grid);
+
+    card.appendChild(header);
+    card.appendChild(body);
+    return card;
+}
+
+// Drops and loot tables: single card with the drop/roll tree
+function loadSimpleView(entry) {
+    const container = document.getElementById('loot-container');
+    container.innerHTML = '';
+    selectionCounter = 0;
+
+    const gridHtml = entry.root
+        ? renderLootGrid(entry.root)
+        : '<div style="color:#555; padding:10px;">No loot defined</div>';
+
+    container.appendChild(buildLootCard(entry.name, true, gridHtml));
+}
+
+function loadPrefabView(entry) {
+    const prefab = entry.data;
+
     // Calculate and display tier stats
     const tierStats = calculateTierStats(prefab.chests);
     document.getElementById('stat-chests').innerText = `${tierStats.total}x Chest`;
@@ -330,15 +497,15 @@ function loadPrefab(prefab) {
 
         const header = document.createElement('div');
         header.className = 'card-header';
+        header.setAttribute('role', 'button');
+        header.setAttribute('aria-expanded', 'true');
         header.innerHTML = `<span class="card-title">${escapeHtml(id)}</span>
             <span class="card-meta-group">
                 <span class="card-meta card-meta-items hidden"></span>
                 <span class="card-meta">${locations.length} Chest${locations.length === 1 ? '' : 's'}</span>
+                <span class="card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
             </span>`;
-        header.onclick = () => {
-           const body = card.querySelector('.card-body');
-           body.classList.toggle('hidden');
-        };
+        header.onclick = () => setCardCollapsed(card, !card.classList.contains('card-collapsed'));
 
         const body = document.createElement('div');
         body.className = 'card-body';
@@ -363,8 +530,6 @@ function loadPrefab(prefab) {
         card.appendChild(body);
         container.appendChild(card);
     });
-
-    applyFilter();
 }
 
 // --- "Matches only" filtering ---
@@ -390,9 +555,8 @@ function applyFilter() {
         const shown = Array.from(slots).filter(s => !s.classList.contains('dimmed')).length;
 
         // Collapse cards with no matching items while filtering
-        const body = card.querySelector('.card-body');
-        if(body && active) {
-            body.classList.toggle('hidden', shown === 0);
+        if(active) {
+            setCardCollapsed(card, shown === 0);
         }
 
         const badge = card.querySelector('.card-meta-items');
@@ -465,13 +629,23 @@ function renderLootGrid(node, parentChance = 1) {
             ? 1
             : (node.RollsMin + node.RollsMax) / 2;
         const trigger = node.Weight !== undefined ? node.Weight / 100 : 1;
-        const rows = rolls === 1 ? '1' : `${node.RollsMin}-${node.RollsMax}`;
-        const rowLabel = node.Weight !== undefined
-            ? `SELECTION (Roll ${rows}) <span class="row-chance">${formatPct(trigger)}</span>`
-            : `SELECTION (Roll ${rows})`;
+
+        // A single-member trigger/pick row is indistinguishable in outcome from the
+        // item itself - flatten it so users don't wonder where "the selection" is.
+        if(members.length === 1) {
+            const c = members[0];
+            const cond = sum > 0 ? 1 - Math.pow(1 - (c.Weight || 0) / sum, rolls) : 1;
+            return renderLootGrid(c, parentChance * trigger * cond);
+        }
+
+        const rowLabel = `ROLL (pick ${rolls === 1 ? '1' : `${node.RollsMin}-${node.RollsMax}`})`;
+        let badge = '';
+        if(node.Weight !== undefined && trigger < 1) {
+            badge = ` <span class="row-chance">${formatPct(trigger)}</span>`;
+        }
 
         const selId = `sel-${selectionCounter++}`;
-        html += `<div class="logic-row expanded" data-toggle="${selId}">&#9660; ${rowLabel}</div>`;
+        html += `<div class="logic-row expanded" data-toggle="${selId}">&#9660; ${rowLabel}${badge}</div>`;
         html += `<div class="selection-content" id="${selId}">`;
         html += members.map(c => {
             const cond = sum > 0
@@ -482,13 +656,11 @@ function renderLootGrid(node, parentChance = 1) {
         html += `</div>`;
     }
     else if(node.Type === "Multiple") {
-        const selId = `sel-${selectionCounter++}`;
-        html += `<div class="logic-row bundle expanded" data-toggle="${selId}">&#9660; BUNDLE (All)</div>`;
-        html += `<div class="selection-content" id="${selId}">`;
+        // Every loot table is a bundle of independent rolls; the grouping header is noise,
+        // so entries render directly in the card grid.
         if(node.Containers) {
             html += node.Containers.map(c => renderLootGrid(c, parentChance)).join('');
         }
-        html += `</div>`;
     }
     else if(node.Type === "Droplist") {
         const safeId = node.DroplistId.replace(/[^a-zA-Z0-9]/g, '');
@@ -509,15 +681,19 @@ function renderLootGrid(node, parentChance = 1) {
     }
     else if(node.Type === "Empty") {
         html += `
-            <div class="item-slot item-slot-nothing" title="Nothing (no item from this pick chance)">
+            <div class="item-slot item-slot-nothing">
                 <span class="item-chance">${formatPct(parentChance)}</span>
             </div>
         `;
     }
     else if(node.Type === "Single" && node.Item) {
-        const qty = (node.Item.QuantityMin === node.Item.QuantityMax)
-                    ? node.Item.QuantityMin
-                    : `${node.Item.QuantityMin}-${node.Item.QuantityMax}`;
+        const qmin = node.Item.QuantityMin;
+        const qmax = node.Item.QuantityMax;
+        const qty = (qmax === undefined && qmin === undefined)
+                    ? '1'
+                    : (qmax === undefined || qmax === qmin)
+                        ? String(qmin ?? 1)
+                        : `${qmin}-${qmax}`;
         const chanceDisplay = formatPct(parentChance);
         const iconPath = getIconPath(node.Item.ItemId);
 
@@ -596,18 +772,20 @@ function hideTooltip() {
     tooltip.style.display = 'none';
 }
 
-// Custom hover tooltip for chrome elements (native title tooltips get ignored).
+// Custom hover tooltip for chrome/inline elements (native title tooltips get ignored).
 // Wraps text; resets to nowrap for slot tooltips handled by showTooltip().
+function showElementTooltip(el, text) {
+    const rect = el.getBoundingClientRect();
+    tooltip.style.whiteSpace = 'normal';
+    tooltip.style.maxWidth = '320px';
+    tooltip.innerHTML = escapeHtml(text);
+    tooltip.style.display = 'block';
+    tooltip.style.left = rect.left + 'px';
+    tooltip.style.top = (rect.bottom + 6) + 'px';
+}
+
 function bindHoverTooltip(el, text) {
-    el.addEventListener('mouseenter', () => {
-        const rect = el.getBoundingClientRect();
-        tooltip.style.whiteSpace = 'normal';
-        tooltip.style.maxWidth = '280px';
-        tooltip.innerHTML = escapeHtml(text);
-        tooltip.style.display = 'block';
-        tooltip.style.left = rect.left + 'px';
-        tooltip.style.top = (rect.bottom + 6) + 'px';
-    });
+    el.addEventListener('mouseenter', () => showElementTooltip(el, text));
     el.addEventListener('mouseleave', hideTooltip);
 }
 
@@ -615,7 +793,7 @@ function bindHoverTooltip(el, text) {
 const missingIcons = new Set();
 
 function trackMissingIcon(itemId, imgElement) {
-    missingIcons.add(itemId);
+    missingIcons.add(itemId.replace(/^\*/, ''));
     // Set fallback placeholder - lighter and cleaner
     imgElement.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM1NTUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzIiB5PSIzIiB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHJ4PSIyIiByeT0iMiIvPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjMiLz48bGluZSB4MT0iMTIiIHkxPSI4IiB4Mj0iMTIiIHkyPSI4Ii8+PC9zdmc+';
     imgElement.style.opacity = '0.5';
@@ -647,8 +825,28 @@ window.showMissingIconsReport = showMissingIconsReport;
 console.log('%cTip: Run showMissingIconsReport() in console to see missing icons at any time', 'color: #3b82f6; font-style: italic;');
 
 // Help Modal Functions
+let extractorSourceLoaded = false;
+
+function loadExtractorSource() {
+    if(extractorSourceLoaded) return;
+    extractorSourceLoaded = true;
+    fetch('scripts/extract_loot_tables.py')
+        .then(response => {
+            if(!response.ok) throw new Error(response.status);
+            return response.text();
+        })
+        .then(text => {
+            document.getElementById('python-code').firstElementChild.textContent = text;
+        })
+        .catch(() => {
+            document.getElementById('python-code').firstElementChild.textContent =
+                'Could not load scripts/extract_loot_tables.py (fetch unavailable when opened via file://). Open the file directly from the repository instead.';
+        });
+}
+
 window.openHelp = function() {
     document.getElementById('help-modal').classList.remove('hidden');
+    loadExtractorSource();
 };
 
 window.closeHelp = function() {

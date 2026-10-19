@@ -9,14 +9,18 @@
     <link rel="icon" type="image/png" href="loot-watcher-ico.png">
     <link rel="stylesheet" href="style.css">
     
+    <meta property="og:url" content="https://cloudmcsr.github.io/hytale-loot-watcher/" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Hytale Loot Viewer" />
     <meta property="og:description" content="View and search Hytale loot tables. See which structures generate the items you want." />
     <meta property="og:image" content="https://cloudmcsr.github.io/hytale-loot-watcher/og_image.png" />
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Hytale Loot Viewer">
+    <meta name="twitter:description" content="View and search Hytale loot tables. See which structures generate the items you want.">
+    <meta name="twitter:image" content="https://cloudmcsr.github.io/hytale-loot-watcher/og_image.png">
 
-    <script src="data.js"></script>
-    <script src="icon_mappings.js"></script>
+    <script src="data.js" defer></script>
+    <script src="icon_mappings.js" defer></script>
 </head>
 <body>
     <!-- Upload Overlay -->
@@ -32,7 +36,9 @@
     <!-- Sidebar -->
     <div class="sidebar">
         <div class="sidebar-header">
-            <span>Prefabs</span>
+            <select id="category-select" class="category-select" title="Filter categories">
+                <option value="All">All</option>
+            </select>
             <div>
                 <button id="btn-help" class="btn-icon" title="Help" onclick="openHelp()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
@@ -44,7 +50,7 @@
         </div>
         <div class="search-box">
             <div class="input-wrap">
-                <input type="text" id="search" placeholder="Search prefabs or items...">
+                <input type="text" id="search" placeholder="Search structures, drops, tables, items...">
                 <button id="search-clear" class="search-clear hidden" onclick="clearSearch()" title="Clear">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
@@ -69,8 +75,13 @@
 
         <div id="content-view" class="hidden" style="height:100%; display:flex; flex-direction:column;">
             <div class="top-bar">
-                <div class="prefab-title" id="view-title">Goblin_Camp_01</div>
-                <div class="prefab-path" id="view-path">Prefabs/Dungeons/Goblin...</div>
+                <div class="view-head">
+                    <img id="view-icon" class="view-portrait" alt="" style="display:none;">
+                    <div class="view-head-text">
+                        <div class="prefab-title" id="view-title">Goblin_Camp_01</div>
+                        <div class="prefab-path" id="view-path">Prefabs/Dungeons/Goblin...</div>
+                    </div>
+                </div>
                 <div class="stats-bar">
                     <div class="stat-item">
                         <span class="stat-icon">
@@ -107,22 +118,24 @@
                 <section class="help-section">
                     <h3>Quick Start</h3>
                     <ul class="help-list">
-                        <li><strong>Browse:</strong> Click folders and files in the sidebar</li>
-                        <li><strong>Search:</strong> Type prefab names or item IDs (auto-detects what you're searching for)</li>
-                        <li><strong>Filter items:</strong> Use the search box inside each loot card</li>
-                        <li><strong>Collapse sections:</strong> Click SELECTION/BUNDLE headers</li>
-                        <li><strong>Copy coordinates:</strong> Click coordinate chips</li>
+                        <li><strong>Browse:</strong> Sidebar has Structures, Loot Tables and Drops (mobs, blocks, interactions, plants...)</li>
+                        <li><strong>Categories:</strong> Use the dropdown in the sidebar header (top) to narrow to one category</li>
+                        <li><strong>Search:</strong> Names or item IDs across the selected category</li>
+                        <li><strong>Highlight:</strong> Funnel icon + partial search term (glows matches, collapses the rest)</li>
+                        <li><strong>Collapse:</strong> ROLL headers or card titles</li>
+                        <li><strong>Copy coordinates:</strong> Click coordinate chips (in Structures)</li>
                     </ul>
                 </section>
 
                 <section class="help-section">
                     <h3>Understanding Loot Tables</h3>
                     <table class="help-table">
-                        <tr><th>Type</th><th>Description</th></tr>
-                        <tr><td><code>SELECTION (Pick N)</code></td><td>Randomly selects N items from the pool</td></tr>
-                        <tr><td><code>BUNDLE (All)</code></td><td>Guarantees all items in the section</td></tr>
-                        <tr><td><code>Included: [Table]</code></td><td>References another loot table</td></tr>
-                        <tr><td>Yellow badges</td><td>Drop chance percentage</td></tr>
+                        <tr><th>What you see</th><th>Meaning</th></tr>
+                        <tr><td><code>ROLL (pick N)</code></td><td>Picks N items among the slots below</td></tr>
+                        <tr><td><code>Included: [Table]</code></td><td>Another loot table rolled inline</td></tr>
+                        <tr><td>% on item slot</td><td>Chance the item appears; 100% = always</td></tr>
+                        <tr><td>% on a ROLL row</td><td>Chance the roll happens; none = always</td></tr>
+                        <tr><td>Nothing slot</td><td>The pick rolled no item</td></tr>
                     </table>
                 </section>
 
@@ -136,116 +149,16 @@
 
                     <h4>Step 2: Extract Required Folders</h4>
                     <p class="help-desc">Open <code>Assets.zip</code> and navigate into <code>Assets/Server/</code>.</p>
-                    <p class="help-desc">Extract these two folders to the same folder as this tool:</p>
+                    <p class="help-desc">Extract these folders to the same folder as this tool:</p>
                     <ul class="help-list">
                         <li><code>Prefabs</code> (contains structure data)</li>
-                        <li><code>Drops/Prefabs</code> (contains loot tables)</li>
+                        <li><code>Drops</code> (all loot tables: chests, mobs, blocks, interactions)</li>
                     </ul>
 
                     <h4>Step 3: Run the Script</h4>
-                    <p class="help-desc">Run the script below to generate a new <code>mapped_prefabs_data.json</code> file.</p>
-                        <button class="code-toggle" onclick="togglePythonCode()">Show Full Source ▼</button>
-                        <pre class="code-block code-full hidden" id="python-code"><code>import json
-from pathlib import Path
-
-# Configuration - paths relative to script location
-DROP_TABLES_DIR = Path("./Drops/Prefabs")
-PREFABS_ROOT_DIR = Path("./Prefabs")
-OUTPUT_FILE = "mapped_prefabs_data.json"
-
-def load_loot_tables(directory):
-    """Load all loot table JSON files."""
-    loot_map = {}
-    if not directory.exists():
-        print(f"Error: {directory} not found")
-        print("Extract 'Drops\\Prefabs' from Assets.zip first")
-        return loot_map
-    
-    for file_path in directory.rglob("*.json"):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                loot_map[file_path.stem] = json.load(f)
-        except Exception as e:
-            print(f"Error loading {file_path.name}: {e}")
-    return loot_map
-
-def process_prefabs(prefabs_dir, loot_tables):
-    """Process all prefab files and extract chest data."""
-    results = []
-    used_loot_ids = set()
-    
-    if not prefabs_dir.exists():
-        print(f"Error: {prefabs_dir} not found")
-        print("Extract 'Prefabs' from Assets.zip first")
-        return results, used_loot_ids
-    
-    for file_path in prefabs_dir.rglob("*.json"):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except:
-            continue
-        
-        blocks = data.get("blocks")
-        if not isinstance(blocks, list):
-            continue
-        
-        rel_path = file_path.relative_to(prefabs_dir)
-        prefab_info = {
-            "structure_name": rel_path.parts[0] if len(rel_path.parts) > 1 else "Root",
-            "prefab_name": file_path.name,
-            "relative_path_from_root": str(rel_path),
-            "total_chests": 0,
-            "chests": []
-        }
-        
-        for block in blocks:
-            if block.get("name") == "Block_Spawner_Block":
-                components = block.get("components", {}).get("Components", {})
-                tier_id = components.get("BlockSpawner", {}).get("BlockSpawnerId")
-                
-                if tier_id:
-                    used_loot_ids.add(tier_id)
-                    prefab_info["chests"].append({
-                        "location": {"x": block["x"], "y": block["y"], "z": block["z"]},
-                        "loot_table_id": tier_id
-                    })
-                    prefab_info["total_chests"] += 1
-        
-        if prefab_info["total_chests"] > 0:
-            results.append(prefab_info)
-    
-    return results, used_loot_ids
-
-def main():
-    print("Hytale Loot Table Extractor")
-    print("=" * 40)
-    print(f"Looking for: {DROP_TABLES_DIR} and {PREFABS_ROOT_DIR}")
-    print()
-    
-    all_loot_tables = load_loot_tables(DROP_TABLES_DIR)
-    print(f"Loaded {len(all_loot_tables)} loot tables")
-    
-    prefabs_data, used_loot_ids = process_prefabs(PREFABS_ROOT_DIR, all_loot_tables)
-    print(f"Processed {len(prefabs_data)} prefabs with chests")
-    
-    filtered_definitions = {
-        tid: all_loot_tables[tid] for tid in used_loot_ids if tid in all_loot_tables
-    }
-    
-    output = {
-        "loot_table_definitions": filtered_definitions,
-        "prefabs": prefabs_data
-    }
-    
-    print(f"Writing to {OUTPUT_FILE}...")
-    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        json.dump(output, f, indent=2)
-    
-    print(f"Success! {len(prefabs_data)} structures, {len(filtered_definitions)} loot tables")
-
-if __name__ == "__main__":
-    main()</code></pre>
+                    <p class="help-desc">Run the script below to generate a new <code>mapped_prefabs_data.json</code> file. Then run <code>scripts/generate_app_data.py</code> to merge it with the <code>Drops</code> folder into <code>data.js</code>.</p>
+                        <button class="code-toggle" onclick="togglePythonCode()">Show Full Source â–¼</button>
+                        <pre class="code-block code-full hidden" id="python-code"><code>Loading source...</code></pre>
                 </section>
 
                 <section class="help-section">
@@ -260,6 +173,6 @@ if __name__ == "__main__":
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js" defer></script>
 </body>
 </html>

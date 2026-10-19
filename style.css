@@ -576,31 +576,110 @@ body {
     display: none !important;
 }
 
-/* Item Search Box */
-.item-search {
-    padding: 10px 15px;
-    background: #1a1a1a;
-    border-bottom: 1px solid #333;
+/* "Matches only" Toggle (icon-only, in search bar) */
+.search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.item-search input {
-    width: 100%;
-    background: #0f0f0f;
+.input-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+}
+
+.input-wrap input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+}
+
+.input-wrap .search-clear {
+    right: 8px;
+}
+
+.search-box .filter-toggle {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
     border: 1px solid #333;
-    padding: 8px 12px;
+    background: #222;
+    color: #888;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s;
+}
+
+.search-box .filter-toggle svg {
+    width: 16px;
+    height: 16px;
+}
+
+.search-box .filter-toggle input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    margin: 0;
+}
+
+.search-box .filter-toggle:hover {
+    border-color: #444;
+    background: #2a2a2a;
     color: white;
-    border-radius: 4px;
-    font-size: 13px;
-    transition: border-color 0.2s;
 }
 
-.item-search input:focus {
+.search-box .filter-toggle:has(input:checked) {
+    color: var(--accent);
     border-color: var(--accent);
-    outline: none;
+    background: rgba(59, 130, 246, 0.12);
 }
 
-.item-search input::placeholder {
-    color: #666;
+/* Dimmed (non-matching) item slots */
+.item-slot.dimmed {
+    opacity: 0.15;
+    pointer-events: none;
+}
+
+/* Glowing matched item slots */
+.item-slot.matched {
+    border-color: var(--accent);
+    background: #2a3a52;
+    box-shadow: 0 0 6px rgba(59, 130, 246, 0.7), 0 0 16px rgba(59, 130, 246, 0.35);
+    z-index: 9;
+}
+
+.item-slot.matched:hover {
+    border-color: var(--accent-hover);
+    background: #2a3a52;
+}
+
+/* Loot cards that contain no matching items */
+.loot-card.card-no-match .card-header .card-title {
+    color: var(--text-muted);
+}
+
+/* Droplist rows that still contain matching items */
+.logic-row.contains-match {
+    border-left-color: var(--accent);
+    color: white;
+}
+
+.card-meta-group {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.card-meta-items {
+    background: var(--accent, #3b82f6);
+    color: #fff;
 }
 
 /* Full Width Grid */

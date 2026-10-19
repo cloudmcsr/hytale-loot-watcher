@@ -1,6 +1,14 @@
 let DATA = null;
-let currentItemFilter = '';
-let selectionStates = {}; // Track collapsed state of selections
+let searchTerm = '';
+let matchesOnly = false;
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function escapeAttr(str) {
+    return escapeHtml(str);
+}
 
 // --- Auto-load Default JSON ---
 window.addEventListener('DOMContentLoaded', () => {
@@ -48,11 +56,6 @@ function loadJSON(file) {
             overlay.classList.add('fade-out');
             setTimeout(() => overlay.classList.add('hidden'), 300);
             buildSidebar(DATA.prefabs);
-            
-            // Try to save to localStorage (might fail if too big)
-            try {
-                localStorage.setItem('last_loaded_file', file.name);
-            } catch(e) {}
         } catch(err) {
             alert("Invalid JSON file");
             console.error(err);
@@ -62,13 +65,11 @@ function loadJSON(file) {
 }
 
 // --- Sidebar Tree ---
-function buildSidebar(prefabs) {
+function buildTree(prefabs) {
     const root = {};
-    
-    prefabs.forEach((p, idx) => {
+    prefabs.forEach(p => {
         const pathParts = p.relative_path_from_root.replace(/\\/g, '/').split('/');
         let current = root;
-        
         pathParts.forEach((part, i) => {
             if(i === pathParts.length - 1) {
                 current[part] = { _type: 'file', _data: p };
@@ -78,10 +79,29 @@ function buildSidebar(prefabs) {
             }
         });
     });
+    return root;
+}
 
+function countTree(node) {
+    let count = 0;
+    Object.keys(node).forEach(key => {
+        if(key.startsWith('_')) return;
+        const item = node[key];
+        if(item._type === 'file') {
+            count++;
+        } else {
+            const childCount = countTree(item._children);
+            item._count = childCount;
+            count += childCount;
+        }
+    });
+    return count;
+}
+
+function buildSidebar(prefabs) {
     const container = document.getElementById('sidebar-root');
     container.innerHTML = '';
-    container.appendChild(renderTreeNode(root));
+    container.appendChild(renderTreeNode(buildTree(prefabs)));
 }
 
 function renderTreeNode(obj, expandAll = false) {
@@ -116,7 +136,7 @@ function renderTreeNode(obj, expandAll = false) {
                 <span class="node-icon icon-folder">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 </span> 
-                <span class="node-name">${key} ${item._count ? `<span style="color:#666; font-size:11px; margin-left:4px;">(${item._count})</span>` : ''}</span>`;
+                <span class="node-name">${escapeHtml(key)} ${item._count ? `<span style="color:#666; font-size:11px; margin-left:4px;">(${item._count})</span>` : ''}</span>`;
             
             label.onclick = () => {
                 div.classList.toggle('expanded');
@@ -127,7 +147,7 @@ function renderTreeNode(obj, expandAll = false) {
                 <span class="node-icon icon-file">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
                 </span> 
-                <span class="node-name">${key}</span>`;
+                <span class="node-name">${escapeHtml(key)}</span>`;
             
             label.onclick = () => {
                 document.querySelectorAll('.node-label').forEach(el => el.classList.remove('active'));
@@ -150,74 +170,38 @@ function renderTreeNode(obj, expandAll = false) {
 
 // --- Smart Search (auto-detects prefab vs item search) ---
 window.clearSearch = function() {
-    const searchInput = document.getElementById('search');
-    searchInput.value = '';
+    document.getElementById('search').value = '';
+    searchTerm = '';
     document.getElementById('search-clear').classList.add('hidden');
     buildSidebar(DATA.prefabs);
+    applyFilter();
 };
 
+let searchTimer = null;
 document.getElementById('search').addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => runSearch(e.target.value), 150);
+});
+
+function runSearch(rawValue) {
+    const term = rawValue.toLowerCase().trim();
     const container = document.getElementById('sidebar-root');
     const clearBtn = document.getElementById('search-clear');
-    
-    // Show/hide clear button
+    searchTerm = term;
+
     if(term) {
         clearBtn.classList.remove('hidden');
     } else {
         clearBtn.classList.add('hidden');
         buildSidebar(DATA.prefabs);
+        applyFilter();
         return;
     }
-
-    // Clear container
-    container.innerHTML = '';
-
-    // Helper to build tree from filtered results and count matches
-    const buildSearchTree = (prefabs) => {
-        const root = {};
-        
-        // 1. Build the tree structure
-        prefabs.forEach(p => {
-            const pathParts = p.relative_path_from_root.replace(/\\/g, '/').split('/');
-            let current = root;
-            
-            pathParts.forEach((part, i) => {
-                if(i === pathParts.length - 1) {
-                    current[part] = { _type: 'file', _data: p };
-                } else {
-                    if(!current[part]) current[part] = { _type: 'folder', _children: {}, _expanded: false }; // Collapsed by default
-                    current = current[part]._children;
-                }
-            });
-        });
-
-        // 2. Recursive function to count items in folders
-        const countItems = (node) => {
-            let count = 0;
-            Object.keys(node).forEach(key => {
-                if(key.startsWith('_')) return;
-                const item = node[key];
-                if(item._type === 'file') {
-                    count++;
-                } else {
-                    const childCount = countItems(item._children);
-                    item._count = childCount; // Store count on folder
-                    count += childCount;
-                }
-            });
-            return count;
-        };
-
-        countItems(root);
-        return root;
-    };
 
     const matchedPrefabs = [];
     const addedPrefabNames = new Set();
     let totalCount = 0;
 
-    // 1. Search by Prefab Name
     DATA.prefabs.forEach(p => {
         if(p.prefab_name.toLowerCase().includes(term)) {
             matchedPrefabs.push(p);
@@ -226,33 +210,31 @@ document.getElementById('search').addEventListener('input', (e) => {
         }
     });
 
-    // 2. Search by Item Content
     DATA.prefabs.forEach(prefab => {
         if(addedPrefabNames.has(prefab.prefab_name)) return;
-
-        let hasItem = false;
-        prefab.chests.forEach(chest => {
+        const hasItem = prefab.chests.some(chest => {
             const lootDef = DATA.loot_table_definitions[chest.loot_table_id];
-            if(lootDef && containsItem(lootDef, term)) {
-                hasItem = true;
-            }
+            return lootDef && containsItem(lootDef, term);
         });
-        
         if(hasItem) {
             matchedPrefabs.push(prefab);
             totalCount++;
         }
     });
 
-    if (totalCount > 0) {
-        const searchTree = buildSearchTree(matchedPrefabs);
-        container.insertAdjacentHTML('beforeend', `<div style="padding: 10px; color: #888; font-size: 11px; border-bottom: 1px solid #333; margin-bottom: 5px;">Found ${totalCount} results for "${term}"</div>`);
-        // Pass false to collapse by default
-        container.appendChild(renderTreeNode(searchTree, false)); 
+    container.innerHTML = '';
+
+    if(totalCount > 0) {
+        const searchTree = buildTree(matchedPrefabs);
+        countTree(searchTree);
+        container.insertAdjacentHTML('beforeend', `<div style="padding: 10px; color: #888; font-size: 11px; border-bottom: 1px solid #333; margin-bottom: 5px;">Found ${totalCount} results for "${escapeHtml(term)}"</div>`);
+        container.appendChild(renderTreeNode(searchTree, false));
     } else {
         container.innerHTML = '<div style="padding: 20px; color: #666; text-align: center;">No matches found</div>';
     }
-});
+
+    applyFilter();
+}
 
 // Helper: Check if loot table contains an item
 function containsItem(node, itemName) {
@@ -313,28 +295,25 @@ function loadPrefab(prefab) {
     
     // Calculate and display tier stats
     const tierStats = calculateTierStats(prefab.chests);
-    document.getElementById('stat-chests').innerText = tierStats.total;
-    
+    document.getElementById('stat-chests').innerText = `${tierStats.total}x Chest`;
+
     // Show tier breakdown
     const tierCount = Object.keys(tierStats.tiers).length;
-    const tierBreakdown = Object.entries(tierStats.tiers)
+    const tierParts = Object.entries(tierStats.tiers)
         .sort((a, b) => {
             if(a[0] === 'Other') return 1;
             if(b[0] === 'Other') return -1;
-            return a[0].localeCompare(b[0]);
+            return a[0].localeCompare(b[0], undefined, { numeric: true });
         })
-        .map(([tier, count]) => `${tier}: ${count}`)
-        .join(' | ');
-    
+        .map(([tier, count]) => `${count}x ${tier}`);
+
     const statTablesEl = document.getElementById('stat-tables');
-    statTablesEl.innerText = `${tierCount} (${tierBreakdown})`;
-    statTablesEl.title = 'Loot table tier breakdown';
+    statTablesEl.innerText = `${tierCount}x Loot Table${tierCount === 1 ? '' : 's'}${tierParts.length ? ' / ' + tierParts.join(' \u00B7 ') : ''}`;
+    statTablesEl.title = 'Loot table tier breakdown of this prefab';
 
     const container = document.getElementById('loot-container');
     container.innerHTML = '';
-    
-    // Reset selection states
-    selectionStates = {};
+    selectionCounter = 0;
 
     const groups = {};
     prefab.chests.forEach(c => {
@@ -351,7 +330,11 @@ function loadPrefab(prefab) {
 
         const header = document.createElement('div');
         header.className = 'card-header';
-        header.innerHTML = `<span class="card-title">${id}</span> <span class="card-meta">${locations.length} Locations</span>`;
+        header.innerHTML = `<span class="card-title">${escapeHtml(id)}</span>
+            <span class="card-meta-group">
+                <span class="card-meta card-meta-items hidden"></span>
+                <span class="card-meta">${locations.length} Chest${locations.length === 1 ? '' : 's'}</span>
+            </span>`;
         header.onclick = () => {
            const body = card.querySelector('.card-body');
            body.classList.toggle('hidden');
@@ -369,12 +352,6 @@ function loadPrefab(prefab) {
             </div>
         `;
         body.appendChild(coordsBox);
-        
-        // Add item search box
-        const searchBox = document.createElement('div');
-        searchBox.className = 'item-search';
-        searchBox.innerHTML = `<input type="text" placeholder="Filter items... (e.g., 'sword', 'ore')" oninput="filterItems(this.value)">`;
-        body.appendChild(searchBox);
 
         // Render Items as Grid
         const grid = document.createElement('div');
@@ -386,21 +363,81 @@ function loadPrefab(prefab) {
         card.appendChild(body);
         container.appendChild(card);
     });
+
+    applyFilter();
 }
 
-// Filter items in current view
-window.filterItems = function(searchTerm) {
-    currentItemFilter = searchTerm.toLowerCase();
-    const slots = document.querySelectorAll('.item-slot');
-    slots.forEach(slot => {
-        const itemId = slot.querySelector('img').getAttribute('data-item-id') || '';
-        if(!searchTerm || itemId.toLowerCase().includes(currentItemFilter)) {
-            slot.style.display = '';
-        } else {
-            slot.style.display = 'none';
+// --- "Matches only" filtering ---
+// Dim non-matching items in the loaded prefab when the toggle is ON and a search term exists.
+function applyFilter() {
+    const active = matchesOnly && searchTerm;
+    document.querySelectorAll('.item-slot[data-item-id]').forEach(slot => {
+        const itemId = (slot.dataset.itemId || '').toLowerCase();
+        const match = itemId.includes(searchTerm);
+        slot.classList.toggle('dimmed', active && !match);
+        slot.classList.toggle('matched', active && match);
+    });
+
+    document.querySelectorAll('.droplist-content').forEach(dc => {
+        const row = dc.previousElementSibling;
+        if(!row) return;
+        const hasVisible = active && dc.querySelector('.item-slot[data-item-id]:not(.dimmed)');
+        row.classList.toggle('contains-match', !!hasVisible);
+    });
+
+    document.querySelectorAll('.loot-card').forEach(card => {
+        const slots = card.querySelectorAll('.item-slot[data-item-id]');
+        const shown = Array.from(slots).filter(s => !s.classList.contains('dimmed')).length;
+
+        // Collapse cards with no matching items while filtering
+        const body = card.querySelector('.card-body');
+        if(body && active) {
+            body.classList.toggle('hidden', shown === 0);
+        }
+
+        const badge = card.querySelector('.card-meta-items');
+        if(badge) {
+            if(active) {
+                badge.textContent = `${shown} / ${slots.length} match`;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+                badge.textContent = '';
+            }
+        }
+
+        card.classList.toggle('card-no-match', active && shown === 0);
+    });
+}
+
+// Event delegation for the loot card area (slots + logic rows)
+function initLootContainer() {
+    const container = document.getElementById('loot-container');
+    if(!container) return;
+
+    container.addEventListener('click', e => {
+        const toggleRow = e.target.closest('[data-toggle]');
+        if(toggleRow) {
+            toggleSelection(toggleRow);
+            return;
+        }
+        const droplistRow = e.target.closest('[data-droplist]');
+        if(droplistRow) {
+            toggleDroplistGrid(droplistRow, droplistRow.dataset.droplist);
         }
     });
-};
+
+    container.addEventListener('mouseover', e => {
+        const slot = e.target.closest('.item-slot[data-item-id]');
+        if(!slot) return;
+        tooltip.style.display = '';
+        showTooltip(slot, slot.dataset.itemId, slot.dataset.qty, slot.dataset.chance);
+    });
+
+    container.addEventListener('mouseout', e => {
+        if(e.target.closest('.item-slot[data-item-id]')) hideTooltip();
+    });
+}
 
 // --- Grid Renderer ---
 let selectionCounter = 0;
@@ -429,13 +466,12 @@ function renderLootGrid(node, parentChance = 1) {
             : (node.RollsMin + node.RollsMax) / 2;
         const trigger = node.Weight !== undefined ? node.Weight / 100 : 1;
         const rows = rolls === 1 ? '1' : `${node.RollsMin}-${node.RollsMax}`;
-        let rowLabel = `SELECTION (Pick ${rows})`;
-        if(node.Weight !== undefined) {
-            rowLabel += ` <span class="row-chance">${formatPct(trigger)}</span>`;
-        }
+        const rowLabel = node.Weight !== undefined
+            ? `SELECTION (Roll ${rows}) <span class="row-chance">${formatPct(trigger)}</span>`
+            : `SELECTION (Roll ${rows})`;
 
         const selId = `sel-${selectionCounter++}`;
-        html += `<div class="logic-row expanded" onclick="toggleSelection('${selId}')">&#9660; ${rowLabel}</div>`;
+        html += `<div class="logic-row expanded" data-toggle="${selId}">&#9660; ${rowLabel}</div>`;
         html += `<div class="selection-content" id="${selId}">`;
         html += members.map(c => {
             const cond = sum > 0
@@ -447,7 +483,7 @@ function renderLootGrid(node, parentChance = 1) {
     }
     else if(node.Type === "Multiple") {
         const selId = `sel-${selectionCounter++}`;
-        html += `<div class="logic-row bundle expanded" onclick="toggleSelection('${selId}')">&#9660; BUNDLE (All)</div>`;
+        html += `<div class="logic-row bundle expanded" data-toggle="${selId}">&#9660; BUNDLE (All)</div>`;
         html += `<div class="selection-content" id="${selId}">`;
         if(node.Containers) {
             html += node.Containers.map(c => renderLootGrid(c, parentChance)).join('');
@@ -457,8 +493,8 @@ function renderLootGrid(node, parentChance = 1) {
     else if(node.Type === "Droplist") {
         const safeId = node.DroplistId.replace(/[^a-zA-Z0-9]/g, '');
         html += `
-            <div class="logic-row" style="border-color:var(--color-ref); cursor:pointer;" onclick="toggleDroplistGrid(this, '${node.DroplistId}')">
-                &#128279; Included: ${node.DroplistId}
+            <div class="logic-row" style="border-color:var(--color-ref); cursor:pointer;" data-droplist="${escapeAttr(node.DroplistId)}">
+                &#128279; Included: ${escapeHtml(node.DroplistId)}
             </div>
             <div class="droplist-content" id="dl-${safeId}">
         `;
@@ -486,8 +522,8 @@ function renderLootGrid(node, parentChance = 1) {
         const iconPath = getIconPath(node.Item.ItemId);
 
         html += `
-            <div class="item-slot" title="${node.Item.ItemId} (Qty: ${qty})" onmouseenter="showTooltip(this, '${node.Item.ItemId}', '${qty}', '${chanceDisplay}')" onmouseleave="hideTooltip()">
-                <img src="${iconPath}" onerror="trackMissingIcon('${node.Item.ItemId}', this)" data-item-id="${node.Item.ItemId}">
+            <div class="item-slot" data-item-id="${escapeAttr(node.Item.ItemId)}" data-qty="${escapeAttr(String(qty))}" data-chance="${chanceDisplay}" title="${escapeAttr(`${node.Item.ItemId} (Quantity: ${qty})`)}">
+                <img src="${iconPath}" onerror="trackMissingIcon('${escapeAttr(node.Item.ItemId)}', this)" data-item-id="${escapeAttr(node.Item.ItemId)}">
                 <span class="item-qty">${qty}</span>
                 <span class="item-chance">${chanceDisplay}</span>
             </div>
@@ -498,9 +534,9 @@ function renderLootGrid(node, parentChance = 1) {
 }
 
 // Toggle selection visibility
-window.toggleSelection = function(selId) {
-    const content = document.getElementById(selId);
-    const header = content.previousElementSibling;
+window.toggleSelection = function(selIdOrRow) {
+    const header = typeof selIdOrRow === 'string' ? document.getElementById(selIdOrRow).previousElementSibling : selIdOrRow;
+    const content = header.nextElementSibling;
     
     if(content.classList.contains('hidden')) {
         content.classList.remove('hidden');
@@ -548,7 +584,9 @@ document.body.appendChild(tooltip);
 
 function showTooltip(el, name, qty, chance) {
     const rect = el.getBoundingClientRect();
-    tooltip.innerHTML = `<strong>${name}</strong><br>Qty: ${qty}<br>${chance ? 'Chance: '+chance : ''}`;
+    tooltip.style.whiteSpace = '';
+    tooltip.style.maxWidth = '';
+    tooltip.innerHTML = `<strong>${escapeHtml(name)}</strong><br>Quantity: ${escapeHtml(String(qty))}<br>${chance ? 'Chance: '+escapeHtml(String(chance)) : ''}`;
     tooltip.style.display = 'block';
     tooltip.style.left = rect.left + 'px';
     tooltip.style.top = (rect.bottom + 5) + 'px';
@@ -556,6 +594,21 @@ function showTooltip(el, name, qty, chance) {
 
 function hideTooltip() {
     tooltip.style.display = 'none';
+}
+
+// Custom hover tooltip for chrome elements (native title tooltips get ignored).
+// Wraps text; resets to nowrap for slot tooltips handled by showTooltip().
+function bindHoverTooltip(el, text) {
+    el.addEventListener('mouseenter', () => {
+        const rect = el.getBoundingClientRect();
+        tooltip.style.whiteSpace = 'normal';
+        tooltip.style.maxWidth = '280px';
+        tooltip.innerHTML = escapeHtml(text);
+        tooltip.style.display = 'block';
+        tooltip.style.left = rect.left + 'px';
+        tooltip.style.top = (rect.bottom + 6) + 'px';
+    });
+    el.addEventListener('mouseleave', hideTooltip);
 }
 
 // Missing Icon Tracker
@@ -638,3 +691,18 @@ document.addEventListener('keydown', (e) => {
         closeHelp();
     }
 });
+
+// --- Init ---
+const matchesOnlyToggle = document.getElementById('matches-only');
+if(matchesOnlyToggle) {
+    matchesOnlyToggle.addEventListener('change', () => {
+        matchesOnly = matchesOnlyToggle.checked;
+        applyFilter();
+    });
+}
+
+const matchesOnlyLabel = document.querySelector('.filter-toggle');
+if(matchesOnlyLabel) {
+    bindHoverTooltip(matchesOnlyLabel, 'Highlight searched item, and collapse other loot table cards.');
+}
+initLootContainer();

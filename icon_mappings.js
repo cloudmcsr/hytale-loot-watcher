@@ -1,15 +1,15 @@
 const ICON_MAPPINGS = {
-    'Armor_Trork_Chest': 'Armor_Trooper_Chest',
-    'Armor_Trork_Hands': 'Armor_Iron_Hands',
-    'Armor_Trork_Head': 'Armor_Trooper_Head',
-    'Armor_Trork_Legs': 'Armor_Trooper_Legs',
+    'Armor_Trork_Chest': 'Armor_Trork_Warrior_Chest',
+    'Armor_Trork_Hands': 'Armor_Trork_Warrior_Hands',
+    'Armor_Trork_Head': 'Armor_Trork_Warrior_Head',
+    'Armor_Trork_Legs': 'Armor_Trork_Warrior_Legs',
     'Food_Kebab_Fruit': 'Food_Skewer_Fruit',
     'Food_Kebab_Meat': 'Food_Skewer_Meat',
-    'Food_Kebab_Mushroom': 'Food_Skewer_Mushroom',
     'Food_Kebab_Vegetable': 'Food_Skewer_Vegetable',
-    'Food_Vegetable_Cooked': 'Food_Beef_Cooked',
+    'Food_Meat_Kebab': 'Food_Skewer_Meat',
+    'Food_Vegetable_Cooked': 'Food_Roasted_Corn',
     'Ingredient_Charcoal': 'Rubble_Charcoal_Small',
-    'Ingredient_Salt': 'Ingredient_Stick',
+    'Ingredient_Salt': 'Food_Salt',
     'Plant_Crop_Aubergine_Item': 'Plant_Crop_Aubergine',
     'Plant_Crop_Carrot_Item': 'Plant_Crop_Carrot',
     'Plant_Crop_Cauliflower_Item': 'Plant_Crop_Cauliflower',
@@ -24,16 +24,14 @@ const ICON_MAPPINGS = {
     'Plant_Crop_Tomato_Item': 'Plant_Crop_Tomato',
     'Plant_Crop_Turnip_Item': 'Plant_Crop_Turnip',
     'Plant_Crop_Wheat_Item': 'Plant_Crop_Wheat',
-    'Potion_Health_Greater': 'Potion_Health_Large',
-    'Potion_Health_Lesser': 'Potion_Health_Small',
-    'Potion_Stamina_Greater': 'Potion_Stamina_Large',
-    'Potion_Stamina_Lesser': 'Potion_Stamina_Small',
-    'Potion_Signature_Lesser': 'Potion_Mana_Small',
-    'Potion_Signature_Normal': 'Potion_Mana',
-    'Potion_Signature_Greater': 'Potion_Mana_Large',
-    'Potion_Signature_Super': 'Potion_Mana_Large', // Fallback just in case
-    'Weapon_Bomb': 'Weapon_Bow_Flame',
-    'Weapon_Crossbow_Ancient_Steel': 'Weapon_Crossbow_Iron',
+    'Potion_Antidote': 'Weapon_Bomb_Potion_Poison',
+    'Recipe_Goblin_Painting_Fail_Replica': 'Recipe_Page',
+    'Recipe_Goblin_Painting_ForgottenTemple_Replica': 'Recipe_Page',
+    'Recipe_Goblin_Painting_Orbis_Replica': 'Recipe_Page',
+    'Recipe_Goblin_Painting_Portal_Replica': 'Recipe_Page',
+    'Recipe_Goblin_Painting_Repair_Replica': 'Recipe_Page',
+    'Weapon_Bomb': 'Weapon_Bomb_Fire_Goblin',
+    'Weapon_Crossbow_Ancient_Steel': 'Weapon_Crossbow_Iron_Rusty',
     'Weapon_Shortbow_Cobalt': 'Weapon_Bow_Cobalt',
     'Weapon_Shortbow_Copper': 'Weapon_Bow_Copper',
     'Weapon_Shortbow_Crude': 'Weapon_Bow_Crude',
@@ -41,14 +39,11 @@ const ICON_MAPPINGS = {
     'Weapon_Shortbow_Iron': 'Weapon_Bow_Iron',
     'Weapon_Shortbow_Iron_Rusty': 'Weapon_Bow_Iron_Rusty',
     'Weapon_Shortbow_Thorium': 'Weapon_Bow_Thorium',
-    'Weapon_Sword_Scrap': 'Weapon_Sword_Iron',
 };
-
 
 function getIconPath(itemId) {
     if (ICON_MAPPINGS[itemId]) {
         return `ItemsGenerated/${ICON_MAPPINGS[itemId]}.png`;
     }
-    // Default fallback: try the item ID itself
     return `ItemsGenerated/${itemId}.png`;
 }

@@ -69,8 +69,9 @@ function loadJSON(file) {
     reader.readAsText(file);
 }
 
-// --- Unified entries (prefab | drop | loot table) ---
+// --- Unified entries (prefab | drop) ---
 // Every browsable leaf is one entry; the tree is built from these.
+// Drops (the loot tables) render under the "Loot Tables" root group.
 function collectEntries() {
     const entries = [];
 
@@ -88,21 +89,14 @@ function collectEntries() {
             : [d.name];
         entries.push({
             kind: 'drop',
-            path: ['Drops', ...(d.category ? [d.category] : []), ...rest],
+            path: ['Loot Tables', ...(d.category ? [d.category] : []), ...rest],
             name: d.name,
-            category: d.category || 'Drops',
+            category: d.category || 'Loot Tables',
+            displayName: d.displayName,
             icon: d.icon,
             root: d.root
         });
     });
-
-    Object.keys(DATA.loot_table_definitions || {}).sort().forEach(id => entries.push({
-        kind: 'table',
-        path: ['Loot Tables', id],
-        name: id,
-        category: 'Loot Tables',
-        root: DATA.loot_table_definitions[id]
-    }));
 
     return entries;
 }
@@ -110,23 +104,27 @@ function collectEntries() {
 function filteredEntries() {
     const all = collectEntries();
     if(activeCategory === 'All') return all;
-    return all.filter(e => e.category === activeCategory);
+    if(activeCategory === 'Structures') {
+        return all.filter(e => e.kind === 'prefab').map(e => ({ ...e, path: e.path.slice(1) }));
+    }
+    if(activeCategory === 'Loot Tables') {
+        return all.filter(e => e.kind === 'drop').map(e => ({ ...e, path: e.path.slice(1) }));
+    }
+    // specific drop category: strip root group + category, contents render directly
+    return all
+        .filter(e => e.category === activeCategory)
+        .map(e => ({ ...e, path: e.path.slice(2) }));
 }
 
 function initCategorySelect() {
     const select = document.getElementById('category-select');
     if(!select) return;
 
-    const cats = new Set(['All', 'Structures', 'Loot Tables']);
-    (DATA.drops || []).forEach(d => d.category && cats.add(d.category));
+    const cats = new Set((DATA.drops || []).map(d => d.category).filter(Boolean));
+    const ordered = ['All', 'Structures', 'Loot Tables', ...[...cats].sort()];
 
-    select.innerHTML = [...cats]
-        .sort((a, b) => {
-            if(a === 'All') return -1;
-            if(b === 'All') return 1;
-            return a.localeCompare(b);
-        })
-        .map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`)
+    select.innerHTML = ordered
+        .map((c, i) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`)
         .join('');
     select.value = activeCategory;
 
@@ -229,10 +227,17 @@ function renderTreeNode(obj, expandAll = false, highlight = '') {
             const iconMarkup = entry.icon
                 ? `<img class="node-thumb" src="${escapeAttr(entry.icon)}" alt="">`
                 : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`;
+            // Display name (if available) as primary + raw id as secondary
+            const subId = entry.displayName && entry.displayName !== key
+                ? ` <span class="node-subid">${renderHighlightedName(key, highlight)}</span>`
+                : '';
+            const primary = entry.displayName
+                ? `<span class="node-display">${renderHighlightedName(entry.displayName, highlight)}</span>${subId}`
+                : renderHighlightedName(key, highlight);
             label.innerHTML = `
                 <span class="arrow"></span>
                 <span class="node-icon icon-file">${iconMarkup}</span>
-                <span class="node-name">${renderHighlightedName(key, highlight)}</span>`;
+                <span class="node-name">${primary}</span>`;
 
             label.onclick = () => {
                 document.querySelectorAll('.node-label').forEach(el => el.classList.remove('active'));
@@ -268,6 +273,15 @@ document.getElementById('search').addEventListener('input', (e) => {
     searchTimer = setTimeout(() => runSearch(e.target.value), 150);
 });
 
+// Display name of an item id (variant ids like "*X_State_U" resolve to base "X")
+function itemBaseName(itemId) {
+    return itemId.replace(/^\*/, '').replace(/_State_[A-Za-z]+$/, '');
+}
+
+function itemDisplayName(itemId) {
+    return (DATA.itemNames || {})[itemBaseName(itemId)] || null;
+}
+
 // Does the entry itself swing items? (content check, recursive via Droplist)
 function entryContainsItem(entry, term) {
     if(entry.kind === 'prefab') {
@@ -278,6 +292,12 @@ function entryContainsItem(entry, term) {
         });
     }
     return entry.root ? containsItem(entry.root, term) : false;
+}
+
+// Subject-name match: display name if present, else raw id; misses other ids
+function entryNameMatches(entry, term) {
+    if(entry.name && entry.name.toLowerCase().includes(term)) return true;
+    return !!(entry.displayName && entry.displayName.toLowerCase().includes(term));
 }
 
 function runSearch(rawValue) {
@@ -300,14 +320,14 @@ function runSearch(rawValue) {
     let itemCount = 0;
 
     filteredEntries().forEach(entry => {
-        if(entry.name.toLowerCase().includes(term)) {
+        if(entryNameMatches(entry, term)) {
             matches.push(entry);
             nameCount++;
         }
     });
 
     filteredEntries().forEach(entry => {
-        if(nameCount && matches.some(m => m === entry)) return;
+        if(matches.some(m => m === entry)) return;
         if(entryContainsItem(entry, term)) {
             matches.push(entry);
             itemCount++;
@@ -351,7 +371,10 @@ function containsItem(node, itemName) {
     }
     
     if(node.Type === "Single" && node.Item) {
-        return node.Item.ItemId.toLowerCase().includes(itemName);
+        const id = node.Item.ItemId.toLowerCase();
+        if(id.includes(itemName)) return true;
+        const dn = itemDisplayName(node.Item.ItemId);
+        return !!(dn && dn.toLowerCase().includes(itemName));
     }
     
     return false;
@@ -393,21 +416,31 @@ function loadEntry(entry) {
     document.getElementById('empty-state').classList.add('hidden');
     document.getElementById('content-view').classList.remove('hidden');
 
+    // Big subject icon first (top-left), then names
     const portrait = document.getElementById('view-icon');
     portrait.style.display = entry.icon ? '' : 'none';
     if(entry.icon) portrait.src = escapeAttr(entry.icon);
 
+    const titleEl = document.getElementById('view-title');
+    const subIdEl = document.getElementById('view-sub-id');
+    if(entry.displayName && entry.displayName !== entry.name) {
+        titleEl.innerText = entry.displayName;
+        subIdEl.innerText = entry.name;
+        subIdEl.style.display = '';
+    } else {
+        titleEl.innerText = entry.name;
+        subIdEl.style.display = 'none';
+        subIdEl.innerText = '';
+    }
+
     const statsItems = document.querySelectorAll('.stats-bar .stat-item');
 
     if(entry.kind === 'prefab') {
-        document.getElementById('view-title').innerText = entry.name;
         document.getElementById('view-path').innerText = entry.data.relative_path_from_root;
         statsItems.forEach(s => s.style.display = '');
         loadPrefabView(entry);
     } else {
-        document.getElementById('view-title').innerText = entry.name;
-        document.getElementById('view-path').innerText =
-            entry.kind === 'drop' ? 'Drops/' + entry.path.join('/') : 'Loot Tables/' + entry.name;
+        document.getElementById('view-path').innerText = 'Loot Tables/' + entry.path.slice(1).join('/');
         statsItems.forEach(s => s.style.display = 'none');
         loadSimpleView(entry);
     }
@@ -762,7 +795,13 @@ function showTooltip(el, name, qty, chance) {
     const rect = el.getBoundingClientRect();
     tooltip.style.whiteSpace = '';
     tooltip.style.maxWidth = '';
-    tooltip.innerHTML = `<strong>${escapeHtml(name)}</strong><br>Quantity: ${escapeHtml(String(qty))}<br>${chance ? 'Chance: '+escapeHtml(String(chance)) : ''}`;
+    const dn = itemDisplayName(name);
+    let html = '';
+    if(dn) html += `<strong>${escapeHtml(dn)}</strong><br>`;
+    html += `<strong>${escapeHtml(name)}</strong>`;
+    html += `<br>Quantity: ${escapeHtml(String(qty))}`;
+    if(chance) html += `<br>Chance: ${escapeHtml(String(chance))}`;
+    tooltip.innerHTML = html;
     tooltip.style.display = 'block';
     tooltip.style.left = rect.left + 'px';
     tooltip.style.top = (rect.bottom + 5) + 'px';

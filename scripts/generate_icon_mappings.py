@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_PATH = ROOT / "mapped_prefabs_data.json"
-ITEM_PATH = ROOT / "Item"
+DATA_PATH = ROOT / "data" / "mapped_prefabs_data.json"
+ITEM_PATH = ROOT / "context" / "Item"
 ICON_PATH = ROOT / "ItemsGenerated"
 OUTPUT_PATH = ROOT / "icon_mappings.js"
 

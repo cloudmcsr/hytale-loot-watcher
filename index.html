@@ -50,7 +50,7 @@
         </div>
         <div class="search-box">
             <div class="input-wrap">
-                <input type="text" id="search" placeholder="Search structures, drops, tables, items...">
+                <input type="text" id="search" placeholder="Search names, ids, or items...">
                 <button id="search-clear" class="search-clear hidden" onclick="clearSearch()" title="Clear">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
@@ -76,9 +76,10 @@
         <div id="content-view" class="hidden" style="height:100%; display:flex; flex-direction:column;">
             <div class="top-bar">
                 <div class="view-head">
-                    <img id="view-icon" class="view-portrait" alt="" style="display:none;">
+                    <img id="view-icon" class="view-head-icon" alt="" style="display:none;">
                     <div class="view-head-text">
                         <div class="prefab-title" id="view-title">Goblin_Camp_01</div>
+                        <div class="view-sub-id" id="view-sub-id"></div>
                         <div class="prefab-path" id="view-path">Prefabs/Dungeons/Goblin...</div>
                     </div>
                 </div>
@@ -118,9 +119,9 @@
                 <section class="help-section">
                     <h3>Quick Start</h3>
                     <ul class="help-list">
-                        <li><strong>Browse:</strong> Sidebar has Structures, Loot Tables and Drops (mobs, blocks, interactions, plants...)</li>
-                        <li><strong>Categories:</strong> Use the dropdown in the sidebar header (top) to narrow to one category</li>
-                        <li><strong>Search:</strong> Names or item IDs across the selected category</li>
+                        <li><strong>Browse:</strong> Sidebar has Structures and Loot Tables (mobs, blocks, interactions, crops...)</li>
+                        <li><strong>Categories:</strong> Dropdown in the sidebar header; a specific category lists its files directly</li>
+                        <li><strong>Names:</strong> Entries show display names and ids — both are searchable</li>
                         <li><strong>Highlight:</strong> Funnel icon + partial search term (glows matches, collapses the rest)</li>
                         <li><strong>Collapse:</strong> ROLL headers or card titles</li>
                         <li><strong>Copy coordinates:</strong> Click coordinate chips (in Structures)</li>

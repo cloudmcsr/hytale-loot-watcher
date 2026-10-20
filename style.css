@@ -186,7 +186,7 @@ body {
 }
 
 .top-bar {
-    padding: 25px 40px;
+    padding: 20px 40px;
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border);
     display: flex;
@@ -449,7 +449,9 @@ body {
 }
 
 .row-chance {
-    float: right;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 8px;
     background: #fbbf24;
     color: #000;
     font-size: 10px;
@@ -479,11 +481,11 @@ body {
     max-width: 130px;
 }
 
-/* Mob portrait + title row in the top bar */
+/* Subject header row: big icon first, then title/id, path at the end */
 .view-head {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 24px;
     min-width: 0;
 }
 
@@ -491,15 +493,23 @@ body {
     min-width: 0;
 }
 
-.view-portrait {
-    width: 42px;
-    height: 42px;
-    border-radius: 8px;
+/* Subject portrait, top-left of the content page (big, first thing user sees) */
+.view-head-icon {
+    width: 220px;
+    height: 220px;
+    border-radius: 14px;
     border: 1px solid #333;
     background: #1b1f27;
     object-fit: contain;
     image-rendering: pixelated;
     flex-shrink: 0;
+}
+
+.view-sub-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: #777;
+    letter-spacing: 0.3px;
 }
 
 /* Sidebar leaf thumbnails (mob portraits) */
@@ -510,6 +520,18 @@ body {
     image-rendering: pixelated;
     display: block;
     margin: auto;
+}
+
+/* Dual labels on leaves: display name + raw id */
+.node-subid {
+    color: #666;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    margin-left: 4px;
+}
+
+.node-display {
+    color: #ddd;
 }
 
 .item-slot-nothing {

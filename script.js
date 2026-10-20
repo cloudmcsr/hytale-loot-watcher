@@ -2,6 +2,52 @@ let DATA = null;
 let searchTerm = '';
 let matchesOnly = false;
 let activeCategory = 'All';
+let currentEntry = null;
+
+// --- UI state persistence (checks in locally so a refresh keeps your session) ---
+const LS_KEY = 'lw_ui_state_v1';
+
+function saveUiState() {
+    try {
+        localStorage.setItem(LS_KEY, JSON.stringify({
+            entry: currentEntry ? { kind: currentEntry.kind, name: currentEntry.name } : null,
+            term: searchTerm,
+            matchesOnly,
+            category: activeCategory
+        }));
+    } catch (e) { /* file:// with blocked storage - ignore */ }
+}
+
+function restoreUiState() {
+    let saved;
+    try {
+        saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+    } catch (e) { return; }
+    if(!saved) return;
+
+    if(saved.category && activeCategory !== saved.category) {
+        activeCategory = saved.category;
+        const select = document.getElementById('category-select');
+        if(select) select.value = activeCategory;
+    }
+
+    if(saved.entry) {
+        const match = collectEntries().find(e => e.kind === saved.entry.kind && e.name === saved.entry.name);
+        if(match) loadEntry(match);
+    }
+
+    if(saved.term) {
+        const input = document.getElementById('search');
+        if(input) input.value = saved.term;
+        runSearch(saved.term);
+    }
+    if(saved.matchesOnly) {
+        matchesOnly = true;
+        const toggle = document.getElementById('matches-only');
+        if(toggle) toggle.checked = true;
+        applyFilter();
+    }
+}
 
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -19,6 +65,7 @@ window.addEventListener('DOMContentLoaded', () => {
         document.getElementById('upload-overlay').classList.add('hidden');
         initCategorySelect();
         buildSidebar();
+        restoreUiState();
     } else {
         // Fallback to fetch if data.js missing/empty
         fetch('data/mapped_prefabs_data.json')
@@ -31,6 +78,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('upload-overlay').classList.add('hidden');
                 initCategorySelect();
                 buildSidebar();
+                restoreUiState();
             })
             .catch(err => console.log('Waiting for file upload...', err));
     }
@@ -132,6 +180,7 @@ function initCategorySelect() {
         activeCategory = select.value;
         clearSearch(true);
         buildSidebar();
+        saveUiState();
     };
 }
 
@@ -305,6 +354,7 @@ function runSearch(rawValue) {
     const container = document.getElementById('sidebar-root');
     const clearBtn = document.getElementById('search-clear');
     searchTerm = term;
+    saveUiState();
 
     if(!term) {
         clearBtn.classList.add('hidden');
@@ -419,7 +469,34 @@ function setCrumbPath(el, parts) {
         .join('<span class="sep">/</span>');
 }
 
+// Take a mixed sequence of raw slots ("item-slot" fragments), roll rows and
+// block wrappers and wrap every contiguous run of raw slots into its own
+// .item-grid block. Idempotent: existing top-level grids pass through.
+function wrapSlotRuns(html) {
+    if(!html || !html.includes('item-slot')) return html;
+    const frag = document.createElement('div');
+    frag.innerHTML = html;
+    const nodes = Array.from(frag.childNodes);
+    let grid = null;
+    for(const child of nodes) {
+        // whitespace text nodes between blocks must not split a slot run
+        if(child.nodeType === 3 && !child.nodeValue.trim()) continue;
+        if(child.nodeType === 1 && child.classList.contains('item-slot')) {
+            if(!grid) {
+                grid = document.createElement('div');
+                grid.className = 'item-grid';
+                frag.insertBefore(grid, child);
+            }
+            grid.appendChild(child);
+        } else {
+            grid = null;
+        }
+    }
+    return frag.innerHTML;
+}
+
 function loadEntry(entry) {
+    currentEntry = entry;
     document.getElementById('empty-state').classList.add('hidden');
     document.getElementById('content-view').classList.remove('hidden');
 
@@ -457,6 +534,7 @@ function loadEntry(entry) {
     }
 
     applyFilter();
+    saveUiState();
 }
 
 // New loot-card for any entry (drop / loot table): one grid, no locations
@@ -478,10 +556,7 @@ function buildLootCard(title, canCollapse, gridHtml) {
     const body = document.createElement('div');
     body.className = 'card-body';
 
-    const grid = document.createElement('div');
-    grid.className = 'item-grid';
-    grid.innerHTML = gridHtml;
-    body.appendChild(grid);
+    body.innerHTML = wrapSlotRuns(gridHtml);
 
     card.appendChild(header);
     card.appendChild(body);
@@ -568,10 +643,7 @@ function loadPrefabView(entry) {
         body.appendChild(coordsBox);
 
         // Render Items as Grid
-        const grid = document.createElement('div');
-        grid.className = 'item-grid';
-        grid.innerHTML = renderLootGrid(def);
-        body.appendChild(grid);
+        body.innerHTML = wrapSlotRuns(renderLootGrid(def));
 
         card.appendChild(header);
         card.appendChild(body);
@@ -695,12 +767,12 @@ function renderLootGrid(node, parentChance = 1) {
         const selId = `sel-${selectionCounter++}`;
         html += `<div class="logic-row expanded" data-toggle="${selId}">&#9660; ${rowLabel}${badge}</div>`;
         html += `<div class="selection-content" id="${selId}">`;
-        html += members.map(c => {
+        html += wrapSlotRuns(members.map(c => {
             const cond = sum > 0
                 ? 1 - Math.pow(1 - (c.Weight || 0) / sum, rolls)
                 : 1;
             return renderLootGrid(c, parentChance * trigger * cond);
-        }).join('');
+        }).join(''));
         html += `</div>`;
     }
     else if(node.Type === "Multiple") {
@@ -721,7 +793,7 @@ function renderLootGrid(node, parentChance = 1) {
         // Auto-expand by rendering immediately
         const def = DATA.loot_table_definitions[node.DroplistId];
         if(def) {
-            html += `<div class="item-grid">${renderLootGrid(def, parentChance)}</div>`;
+            html += wrapSlotRuns(renderLootGrid(def, parentChance));
         } else {
             html += '<div style="color:red; padding:5px;">Definition not found</div>';
         }
@@ -791,7 +863,7 @@ function toggleDroplistGrid(el, droplistId) {
         if(!contentDiv.innerHTML) {
             const def = DATA.loot_table_definitions[droplistId];
             if(def) {
-                contentDiv.innerHTML = `<div class="item-grid">${renderLootGrid(def)}</div>`;
+                contentDiv.innerHTML = wrapSlotRuns(renderLootGrid(def));
             } else {
                 contentDiv.innerHTML = '<div style="color:red; padding:5px;">Definition not found</div>';
             }
@@ -950,6 +1022,7 @@ if(matchesOnlyToggle) {
     matchesOnlyToggle.addEventListener('change', () => {
         matchesOnly = matchesOnlyToggle.checked;
         applyFilter();
+        saveUiState();
     });
 }
 

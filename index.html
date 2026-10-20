@@ -7,7 +7,7 @@
     <title>Hytale Loot Viewer</title>
     
     <link rel="icon" type="image/png" href="loot-watcher-ico.png">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style/hytale.css">
     
     <meta property="og:url" content="https://cloudmcsr.github.io/hytale-loot-watcher/" />
     <meta property="og:type" content="website" />
@@ -35,17 +35,26 @@
 
     <!-- Sidebar -->
     <div class="sidebar">
-        <div class="sidebar-header">
-            <select id="category-select" class="category-select" title="Filter categories">
-                <option value="All">All</option>
-            </select>
-            <div>
-                <button id="btn-help" class="btn-icon" title="Help" onclick="openHelp()">
+        <div class="sidebar-top">
+            <div class="brand">
+                <img class="brand-mark" src="loot-watcher-ico.png" alt="">
+                <div class="brand-text">
+                    <div class="brand-title">Loot Watcher</div>
+                    <div class="brand-sub">Hytale Client</div>
+                </div>
+            </div>
+            <div class="sidebar-tools">
+                <select id="category-select" class="category-select" title="Filter categories">
+                    <option value="All">All</option>
+                </select>
+                <div class="sidebar-tools-btns">
+                    <button id="btn-help" class="btn-icon" title="Help" onclick="openHelp()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                 </button>
                 <button id="btn-open" class="btn-icon" title="Open File">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg>
                 </button>
+                </div>
             </div>
         </div>
         <div class="search-box">
@@ -61,40 +70,41 @@
             </label>
         </div>
         <div class="tree-root" id="sidebar-root"></div>
-        <div class="scroll-hint" style="padding: 6px 10px; font-size: 11px; color: #555; text-align: center; border-top: 1px solid #333;">Shift+Scroll for horizontal scroll</div>
+        <div class="scroll-hint sidebar-foot">Shift+Scroll for horizontal scroll</div>
     </div>
 
     <!-- Main View -->
     <div class="main">
-        <div id="empty-state" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#444;">
-            <div style="opacity: 0.2; margin-bottom: 20px;">
+        <div id="empty-state" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#57779c;">
+            <div style="opacity: 0.3; margin-bottom: 20px;">
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
             </div>
-            <div style="font-size: 18px; font-weight: 500;">Select a prefab to view loot tables</div>
+            <div style="font-size: 18px; font-weight: 600;">Select a prefab to view loot tables</div>
         </div>
 
-        <div id="content-view" class="hidden" style="height:100%; display:flex; flex-direction:column;">
-            <div class="top-bar">
-                <div class="view-head">
-                    <img id="view-icon" class="view-head-icon" alt="" style="display:none;">
-                    <div class="view-head-text">
-                        <div class="prefab-title" id="view-title">Goblin_Camp_01</div>
-                        <div class="view-sub-id" id="view-sub-id"></div>
-                        <div class="prefab-path" id="view-path">Prefabs/Dungeons/Goblin...</div>
-                    </div>
+        <div id="content-view" class="hidden" style="display:flex; flex-direction:column;">
+            <div class="topbar">
+                <i class="tb-l"></i><i class="tb-m"></i><i class="tb-r"></i>
+                <div class="crumbs" id="view-path">Prefabs/Dungeons/Goblin...</div>
+            </div>
+
+            <div class="hero">
+                <div id="view-icon-wrap" class="hero-icon-wrap" style="display:none;">
+                    <img id="view-icon" alt="">
                 </div>
-                <div class="stats-bar">
+                <div class="hero-copy">
+                    <div class="kicker" id="view-kicker">Structure</div>
+                    <h1 class="prefab-title" id="view-title">Goblin_Camp_01</h1>
+                    <div class="entry-id" id="view-sub-id"></div>
+                </div>
+                <div class="hero-stats stats-bar">
                     <div class="stat-item">
-                        <span class="stat-icon">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                        </span>
-                        <span class="stat-value" id="stat-chests">0</span>
+                        <div class="stat-value" id="stat-chests">0</div>
+                        <div class="stat-label" id="stat-chests-label">Chests</div>
                     </div>
                     <div class="stat-item">
-                        <span class="stat-icon">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                        </span>
-                        <span class="stat-value" id="stat-tables">0</span>
+                        <div class="stat-value" id="stat-tables">0</div>
+                        <div class="stat-label" id="stat-tables-label">Loot tables</div>
                     </div>
                 </div>
             </div>

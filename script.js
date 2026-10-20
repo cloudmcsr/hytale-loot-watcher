@@ -217,7 +217,7 @@ function renderTreeNode(obj, expandAll = false, highlight = '') {
                 <span class="node-icon icon-folder">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 </span> 
-                <span class="node-name">${renderHighlightedName(key, highlight)} ${item._count ? `<span style="color:#666; font-size:11px; margin-left:4px;">(${item._count})</span>` : ''}</span>`;
+                <span class="node-name">${renderHighlightedName(key, highlight)} ${item._count ? `<span class="node-count">(${item._count})</span>` : ''}</span>`;
             
             label.onclick = () => {
                 div.classList.toggle('expanded');
@@ -412,14 +412,25 @@ function setCardCollapsed(card, collapsed) {
 }
 
 // --- Main Content View ---
+function setCrumbPath(el, parts) {
+    const clean = parts.filter(Boolean);
+    el.innerHTML = clean
+        .map((p, i) => i === clean.length - 1 ? `<b>${escapeHtml(p)}</b>` : `<span>${escapeHtml(p)}</span>`)
+        .join('<span class="sep">/</span>');
+}
+
 function loadEntry(entry) {
     document.getElementById('empty-state').classList.add('hidden');
     document.getElementById('content-view').classList.remove('hidden');
 
-    // Big subject icon first (top-left), then names
+    // Big subject icon first (top-left portrait), then names
     const portrait = document.getElementById('view-icon');
-    portrait.style.display = entry.icon ? '' : 'none';
+    const portraitWrap = document.getElementById('view-icon-wrap');
+    portraitWrap.style.display = entry.icon ? '' : 'none';
     if(entry.icon) portrait.src = escapeAttr(entry.icon);
+
+    const kickerEl = document.getElementById('view-kicker');
+    kickerEl.innerText = entry.kind === 'prefab' ? 'Structure' : 'Loot table';
 
     const titleEl = document.getElementById('view-title');
     const subIdEl = document.getElementById('view-sub-id');
@@ -436,11 +447,11 @@ function loadEntry(entry) {
     const statsItems = document.querySelectorAll('.stats-bar .stat-item');
 
     if(entry.kind === 'prefab') {
-        document.getElementById('view-path').innerText = entry.data.relative_path_from_root;
+        setCrumbPath(document.getElementById('view-path'), entry.data.relative_path_from_root.split(/[\\/]/));
         statsItems.forEach(s => s.style.display = '');
         loadPrefabView(entry);
     } else {
-        document.getElementById('view-path').innerText = 'Loot Tables/' + entry.path.slice(1).join('/');
+        setCrumbPath(document.getElementById('view-path'), ['Loot Tables', ...entry.path.slice(1)]);
         statsItems.forEach(s => s.style.display = 'none');
         loadSimpleView(entry);
     }
@@ -458,9 +469,9 @@ function buildLootCard(title, canCollapse, gridHtml) {
     header.setAttribute('role', 'button');
     header.setAttribute('aria-expanded', 'true');
     header.innerHTML = `<span class="card-title">${escapeHtml(title)}</span>
+        <span class="card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
         <span class="card-meta-group">
             <span class="card-meta card-meta-items hidden"></span>
-            <span class="card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
         </span>`;
     header.onclick = () => setCardCollapsed(card, !card.classList.contains('card-collapsed'));
 
@@ -495,7 +506,7 @@ function loadPrefabView(entry) {
 
     // Calculate and display tier stats
     const tierStats = calculateTierStats(prefab.chests);
-    document.getElementById('stat-chests').innerText = `${tierStats.total}x Chest`;
+    document.getElementById('stat-chests').innerText = tierStats.total;
 
     // Show tier breakdown
     const tierCount = Object.keys(tierStats.tiers).length;
@@ -507,9 +518,12 @@ function loadPrefabView(entry) {
         })
         .map(([tier, count]) => `${count}x ${tier}`);
 
+    document.getElementById('stat-chests-label').innerText = `${tierStats.total}x Chest`;
+
     const statTablesEl = document.getElementById('stat-tables');
-    statTablesEl.innerText = `${tierCount}x Loot Table${tierCount === 1 ? '' : 's'}${tierParts.length ? ' / ' + tierParts.join(' \u00B7 ') : ''}`;
-    statTablesEl.title = 'Loot table tier breakdown of this prefab';
+    statTablesEl.innerText = tierCount;
+    statTablesEl.title = 'Loot table tier breakdown of this prefab' + (tierParts.length ? ': ' + tierParts.join(', ') : '');
+    document.getElementById('stat-tables-label').innerText = `${tierCount}x Loot Table${tierCount === 1 ? '' : 's'}`;
 
     const container = document.getElementById('loot-container');
     container.innerHTML = '';
@@ -533,10 +547,10 @@ function loadPrefabView(entry) {
         header.setAttribute('role', 'button');
         header.setAttribute('aria-expanded', 'true');
         header.innerHTML = `<span class="card-title">${escapeHtml(id)}</span>
+            <span class="card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
             <span class="card-meta-group">
                 <span class="card-meta card-meta-items hidden"></span>
                 <span class="card-meta">${locations.length} Chest${locations.length === 1 ? '' : 's'}</span>
-                <span class="card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
             </span>`;
         header.onclick = () => setCardCollapsed(card, !card.classList.contains('card-collapsed'));
 
@@ -571,7 +585,8 @@ function applyFilter() {
     const active = matchesOnly && searchTerm;
     document.querySelectorAll('.item-slot[data-item-id]').forEach(slot => {
         const itemId = (slot.dataset.itemId || '').toLowerCase();
-        const match = itemId.includes(searchTerm);
+        const dn = itemDisplayName(slot.dataset.itemId || '');
+        const match = itemId.includes(searchTerm) || (dn && dn.toLowerCase().includes(searchTerm));
         slot.classList.toggle('dimmed', active && !match);
         slot.classList.toggle('matched', active && match);
     });
@@ -698,15 +713,15 @@ function renderLootGrid(node, parentChance = 1) {
     else if(node.Type === "Droplist") {
         const safeId = node.DroplistId.replace(/[^a-zA-Z0-9]/g, '');
         html += `
-            <div class="logic-row" style="border-color:var(--color-ref); cursor:pointer;" data-droplist="${escapeAttr(node.DroplistId)}">
-                &#128279; Included: ${escapeHtml(node.DroplistId)}
+            <div class="logic-row droplist-head" data-droplist="${escapeAttr(node.DroplistId)}">
+                <span>Included table</span><a class="link">${escapeHtml(node.DroplistId)}</a>
             </div>
             <div class="droplist-content" id="dl-${safeId}">
         `;
         // Auto-expand by rendering immediately
         const def = DATA.loot_table_definitions[node.DroplistId];
         if(def) {
-            html += `<div class="item-grid" style="margin-left:10px; border-left:2px solid #444;">${renderLootGrid(def, parentChance)}</div>`;
+            html += `<div class="item-grid">${renderLootGrid(def, parentChance)}</div>`;
         } else {
             html += '<div style="color:red; padding:5px;">Definition not found</div>';
         }
@@ -731,7 +746,7 @@ function renderLootGrid(node, parentChance = 1) {
         const iconPath = getIconPath(node.Item.ItemId);
 
         html += `
-            <div class="item-slot" data-item-id="${escapeAttr(node.Item.ItemId)}" data-qty="${escapeAttr(String(qty))}" data-chance="${chanceDisplay}" title="${escapeAttr(`${node.Item.ItemId} (Quantity: ${qty})`)}">
+            <div class="item-slot" data-item-id="${escapeAttr(node.Item.ItemId)}" data-qty="${escapeAttr(String(qty))}" data-chance="${chanceDisplay}">
                 <img src="${iconPath}" onerror="trackMissingIcon('${escapeAttr(node.Item.ItemId)}', this)" data-item-id="${escapeAttr(node.Item.ItemId)}">
                 <span class="item-qty">${qty}</span>
                 <span class="item-chance">${chanceDisplay}</span>
@@ -776,7 +791,7 @@ function toggleDroplistGrid(el, droplistId) {
         if(!contentDiv.innerHTML) {
             const def = DATA.loot_table_definitions[droplistId];
             if(def) {
-                contentDiv.innerHTML = `<div class="item-grid" style="margin-left:10px; border-left:2px solid #444;">${renderLootGrid(def)}</div>`;
+                contentDiv.innerHTML = `<div class="item-grid">${renderLootGrid(def)}</div>`;
             } else {
                 contentDiv.innerHTML = '<div style="color:red; padding:5px;">Definition not found</div>';
             }

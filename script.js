@@ -1,8 +1,41 @@
-let DATA = null;
+﻿let DATA = null;
 let searchTerm = '';
 let matchesOnly = false;
 let activeCategory = 'All';
 let currentEntry = null;
+
+// --- Texts (texts.js; swap that file for another string set) ---
+function T(key) {
+    return (window.TEXTS && window.TEXTS[key]) || key;
+}
+
+function tf(key, params) {
+    return String(T(key)).replace(/\{(\w+)\}/g, (m, k) =>
+        (params && Object.prototype.hasOwnProperty.call(params, k)) ? params[k] : m
+    );
+}
+
+// Canonical root/category ids mapped to their display labels;
+// unknown segments (data categories, file names) pass through.
+function displaySeg(seg) {
+    if(seg === 'All') return T('catAll');
+    if(seg === 'Structures') return T('catStructures');
+    if(seg === 'Loot Tables') return T('catLootTables');
+    return seg;
+}
+
+function applyStaticTexts() {
+    if(!window.TEXTS) { console.log('texts.js loaded? window.TEXTS missing'); return; }
+    (window.TEXT_ATTRS || []).forEach(({ sel, attr, key }) => {
+        const el = document.querySelector(sel);
+        if(!el) return;
+        if(attr === 'text') el.textContent = T(key);
+        else if(attr === 'html') el.innerHTML = T(key);
+        else el.setAttribute(attr, T(key));
+    });
+    // CSS-owned strings (Nothing slot) exposed as a custom property
+    document.documentElement.style.setProperty('--nothing-text', JSON.stringify(T('nothingSlotText')));
+}
 
 // --- UI state persistence (checks in locally so a refresh keeps your session) ---
 const LS_KEY = 'lw_ui_state_v1';
@@ -63,6 +96,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if(window.DEFAULT_DATA) {
         DATA = window.DEFAULT_DATA;
         document.getElementById('upload-overlay').classList.add('hidden');
+        applyStaticTexts();
         initCategorySelect();
         buildSidebar();
         restoreUiState();
@@ -76,6 +110,7 @@ window.addEventListener('DOMContentLoaded', () => {
             .then(json => {
                 DATA = json;
                 document.getElementById('upload-overlay').classList.add('hidden');
+                applyStaticTexts();
                 initCategorySelect();
                 buildSidebar();
                 restoreUiState();
@@ -107,10 +142,11 @@ function loadJSON(file) {
             if(!DATA.drops) DATA.drops = [];
             overlay.classList.add('fade-out');
             setTimeout(() => overlay.classList.add('hidden'), 300);
+            applyStaticTexts();
             initCategorySelect();
             buildSidebar();
         } catch(err) {
-            alert("Invalid JSON file");
+            alert(T('invalidFileAlert'));
             console.error(err);
         }
     };
@@ -172,7 +208,7 @@ function initCategorySelect() {
     const ordered = ['All', 'Structures', 'Loot Tables', ...[...cats].sort()];
 
     select.innerHTML = ordered
-        .map((c, i) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`)
+        .map(c => `<option value="${escapeAttr(c)}">${escapeHtml(displaySeg(c))}</option>`)
         .join('');
     select.value = activeCategory;
 
@@ -255,7 +291,8 @@ function renderTreeNode(obj, expandAll = false, highlight = '') {
             div.classList.add('expanded');
         }
 
-        const label = document.createElement('div');
+        key = displaySeg(key);
+    const label = document.createElement('div');
         label.className = 'node-label';
         
         if(isFolder) {
@@ -390,10 +427,10 @@ function runSearch(rawValue) {
     if(totalCount > 0) {
         const searchTree = buildTree(matches);
         countTree(searchTree);
-        container.insertAdjacentHTML('beforeend', `<div class="search-results-info">Found ${totalCount} result${totalCount === 1 ? '' : 's'} for "${escapeHtml(term)}" (${nameCount} by name, ${itemCount} by item)</div>`);
+        container.insertAdjacentHTML('beforeend', `<div class="search-results-info">${escapeHtml(tf(totalCount === 1 ? 'searchResultsOne' : 'searchResultsMany', { n: totalCount, term, names: nameCount, items: itemCount }))}</div>`);
         container.appendChild(renderTreeNode(searchTree, true, term));
     } else {
-        container.innerHTML = '<div style="padding: 20px; color: #666; text-align: center;">No matches found</div>';
+        container.innerHTML = `<div style="padding: 20px; color: #666; text-align: center;">${escapeHtml(T('noMatches'))}</div>`;
     }
 
     applyFilter();
@@ -465,7 +502,10 @@ function setCardCollapsed(card, collapsed) {
 function setCrumbPath(el, parts) {
     const clean = parts.filter(Boolean);
     el.innerHTML = clean
-        .map((p, i) => i === clean.length - 1 ? `<b>${escapeHtml(p)}</b>` : `<span>${escapeHtml(p)}</span>`)
+        .map((p, i) => {
+            const disp = escapeHtml(displaySeg(p));
+            return i === clean.length - 1 ? `<b>${disp}</b>` : `<span>${disp}</span>`;
+        })
         .join('<span class="sep">/</span>');
 }
 
@@ -495,6 +535,93 @@ function wrapSlotRuns(html) {
     return frag.innerHTML;
 }
 
+/* Wrap every top-level group of a card body into its own .loot-group div:
+   [ROLL row + selection] | [droplist head + panel] | [standalone slot grid].
+   Lets CSS set group spacing via one margin instead of collapse tricks.
+   Idempotent; recurses into selection/droplist contents. */
+function groupChildren(parent, topLevel) {
+    // parent.children is a LIVE collection - wrapping shifts it while we
+    // walk, so iterate a stable snapshot instead
+    const nodes = Array.from(parent.children);
+    let i = 0;
+    while (i < nodes.length) {
+        const n = nodes[i];
+        const next = nodes[i + 1];
+        let members = null;
+        if(n.classList.contains('logic-row') && next &&
+           (next.classList.contains('selection-content') || next.classList.contains('droplist-content'))) {
+            members = [n, next];
+            i += 2;
+        } else if(n.classList.contains('item-grid')) {
+            members = [n];
+            i += 1;
+        } else {
+            i += 1;
+        }
+        if(members) {
+            const g = document.createElement('div');
+            g.className = 'loot-group';
+            parent.insertBefore(g, members[0]);
+            members.forEach(m => g.appendChild(m));
+        }
+    }
+    coalesceFlatGroups(parent, topLevel);
+    Array.from(parent.querySelectorAll('.selection-content, .droplist-content'))
+        .forEach(sc => {
+            if(sc.dataset.grouped === '1') return;
+            sc.dataset.grouped = '1';
+            groupChildren(sc, false);
+        });
+}
+
+/* Loose slot groups at one level are all independent per-item drops.
+   Merge them into ONE flat grid hoisted above the roll groups. At TOP level
+   (card bodies, droplist panels) a flat grid with any real chance (< 100%)
+   gets a chevron header so it reads as its own group ("individual rolls");
+   nested roll contents never get one - their grid IS the roll's content.
+   All-guaranteed flat rows stay bare. */
+function coalesceFlatGroups(parent, topLevel) {
+    const flats = Array.from(parent.children).filter(g =>
+        g.classList.contains('loot-group') &&
+        g.children.length === 1 && g.children[0].classList.contains('item-grid'));
+    if(flats.length === 0) return;
+    const keepGrid = flats[0].children[0];
+    for(let k = 1; k < flats.length; k++) {
+        Array.from(flats[k].children[0].children).forEach(slot => keepGrid.appendChild(slot));
+        flats[k].remove();
+    }
+    if(flats[0].previousElementSibling) {
+        parent.insertBefore(flats[0], parent.firstElementChild);
+    }
+    if(!topLevel) return;
+    const slots = Array.from(keepGrid.children);
+    const chanced = slots.some(s => {
+        const c = parseFloat(s.dataset.chance);
+        return !isNaN(c) && c < 100;
+    });
+    if(!chanced) return;
+    const selId = `sel-${selectionCounter++}`;
+    const head = document.createElement('div');
+    head.className = 'logic-row expanded';
+    head.dataset.toggle = selId;
+    head.innerHTML = `&#9660; ${tf('flatRollsLabel', { count: slots.length })}`;
+    const content = document.createElement('div');
+    content.className = 'selection-content';
+    content.id = selId;
+    content.dataset.grouped = '1';
+    content.appendChild(keepGrid);
+    flats[0].appendChild(head);
+    flats[0].appendChild(content);
+}
+
+function wrapGroups(html, topLevel = true) {
+    if(!html) return html;
+    const frag = document.createElement('div');
+    frag.innerHTML = wrapSlotRuns(html);
+    groupChildren(frag, topLevel);
+    return frag.innerHTML;
+}
+
 function loadEntry(entry) {
     currentEntry = entry;
     document.getElementById('empty-state').classList.add('hidden');
@@ -507,7 +634,7 @@ function loadEntry(entry) {
     if(entry.icon) portrait.src = escapeAttr(entry.icon);
 
     const kickerEl = document.getElementById('view-kicker');
-    kickerEl.innerText = entry.kind === 'prefab' ? 'Structure' : 'Loot table';
+    kickerEl.innerText = entry.kind === 'prefab' ? T('kickerStructure') : T('kickerLootTable');
 
     const titleEl = document.getElementById('view-title');
     const subIdEl = document.getElementById('view-sub-id');
@@ -556,7 +683,7 @@ function buildLootCard(title, canCollapse, gridHtml) {
     const body = document.createElement('div');
     body.className = 'card-body';
 
-    body.innerHTML = wrapSlotRuns(gridHtml);
+    body.innerHTML = wrapGroups(gridHtml);
 
     card.appendChild(header);
     card.appendChild(body);
@@ -593,11 +720,11 @@ function loadPrefabView(entry) {
         })
         .map(([tier, count]) => `${count}x ${tier}`);
 
-    document.getElementById('stat-chests-label').innerText = `${tierStats.total}x Chest`;
+    document.getElementById('stat-chests-label').innerText = tf('statChestsValue', { n: tierStats.total });
 
     const statTablesEl = document.getElementById('stat-tables');
     statTablesEl.innerText = tierCount;
-    statTablesEl.title = 'Loot table tier breakdown of this prefab' + (tierParts.length ? ': ' + tierParts.join(', ') : '');
+    statTablesEl.title = tf('statTablesTip', { tiers: tierParts.length ? ': ' + tierParts.join(', ') : '' });
     document.getElementById('stat-tables-label').innerText = `${tierCount}x Loot Table${tierCount === 1 ? '' : 's'}`;
 
     const container = document.getElementById('loot-container');
@@ -625,7 +752,7 @@ function loadPrefabView(entry) {
             <span class="card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
             <span class="card-meta-group">
                 <span class="card-meta card-meta-items hidden"></span>
-                <span class="card-meta">${locations.length} Chest${locations.length === 1 ? '' : 's'}</span>
+                <span class="card-meta">${locations.length} ${escapeHtml(T(locations.length === 1 ? 'cardChests' : 'cardChestsPlural'))}</span>
             </span>`;
         header.onclick = () => setCardCollapsed(card, !card.classList.contains('card-collapsed'));
 
@@ -643,7 +770,7 @@ function loadPrefabView(entry) {
         body.appendChild(coordsBox);
 
         // Render Items as Grid
-        body.innerHTML = wrapSlotRuns(renderLootGrid(def));
+        body.innerHTML = wrapGroups(renderLootGrid(def));
 
         card.appendChild(header);
         card.appendChild(body);
@@ -682,7 +809,7 @@ function applyFilter() {
         const badge = card.querySelector('.card-meta-items');
         if(badge) {
             if(active) {
-                badge.textContent = `${shown} / ${slots.length} match`;
+                badge.textContent = tf('matchBadge', { shown, total: slots.length });
                 badge.classList.remove('hidden');
             } else {
                 badge.classList.add('hidden');
@@ -732,7 +859,7 @@ function formatPct(chance) {
 }
 
 function renderLootGrid(node, parentChance = 1) {
-    if(!node) return `<div style="color:red; padding:10px;">Definition not found</div>`;
+    if(!node) return `<div style="color:red; padding:10px;">${escapeHtml(T('defNotFound'))}</div>`;
 
     if(node.Container) return renderLootGrid(node.Container, parentChance);
 
@@ -758,7 +885,7 @@ function renderLootGrid(node, parentChance = 1) {
             return renderLootGrid(c, parentChance * trigger * cond);
         }
 
-        const rowLabel = `ROLL (pick ${rolls === 1 ? '1' : `${node.RollsMin}-${node.RollsMax}`})`;
+        const rowLabel = tf('rollLabel', { range: rolls === 1 ? '1' : `${node.RollsMin}-${node.RollsMax}` });
         let badge = '';
         if(node.Weight !== undefined && trigger < 1) {
             badge = ` <span class="row-chance">${formatPct(trigger)}</span>`;
@@ -767,12 +894,12 @@ function renderLootGrid(node, parentChance = 1) {
         const selId = `sel-${selectionCounter++}`;
         html += `<div class="logic-row expanded" data-toggle="${selId}">&#9660; ${rowLabel}${badge}</div>`;
         html += `<div class="selection-content" id="${selId}">`;
-        html += wrapSlotRuns(members.map(c => {
+        html += wrapGroups(members.map(c => {
             const cond = sum > 0
                 ? 1 - Math.pow(1 - (c.Weight || 0) / sum, rolls)
                 : 1;
             return renderLootGrid(c, parentChance * trigger * cond);
-        }).join(''));
+        }).join(''), false);
         html += `</div>`;
     }
     else if(node.Type === "Multiple") {
@@ -786,16 +913,16 @@ function renderLootGrid(node, parentChance = 1) {
         const safeId = node.DroplistId.replace(/[^a-zA-Z0-9]/g, '');
         html += `
             <div class="logic-row droplist-head" data-droplist="${escapeAttr(node.DroplistId)}">
-                <span>Included table</span><a class="link">${escapeHtml(node.DroplistId)}</a>
+                <span>${escapeHtml(T('includedTitle'))}</span><a class="link">${escapeHtml(node.DroplistId)}</a>
             </div>
             <div class="droplist-content" id="dl-${safeId}">
         `;
         // Auto-expand by rendering immediately
         const def = DATA.loot_table_definitions[node.DroplistId];
         if(def) {
-            html += wrapSlotRuns(renderLootGrid(def, parentChance));
+            html += wrapGroups(renderLootGrid(def, parentChance));
         } else {
-            html += '<div style="color:red; padding:5px;">Definition not found</div>';
+            html += '<div style="color:red; padding:5px;">' + escapeHtml(T('defNotFound')) + '</div>';
         }
         html += `</div>`;
     }
@@ -863,9 +990,9 @@ function toggleDroplistGrid(el, droplistId) {
         if(!contentDiv.innerHTML) {
             const def = DATA.loot_table_definitions[droplistId];
             if(def) {
-                contentDiv.innerHTML = wrapSlotRuns(renderLootGrid(def));
+                contentDiv.innerHTML = wrapGroups(renderLootGrid(def));
             } else {
-                contentDiv.innerHTML = '<div style="color:red; padding:5px;">Definition not found</div>';
+                contentDiv.innerHTML = '<div style="color:red; padding:5px;">' + escapeHtml(T('defNotFound')) + '</div>';
             }
         }
     } else {
@@ -886,8 +1013,8 @@ function showTooltip(el, name, qty, chance) {
     let html = '';
     if(dn) html += `<strong>${escapeHtml(dn)}</strong><br>`;
     html += `<strong>${escapeHtml(name)}</strong>`;
-    html += `<br>Quantity: ${escapeHtml(String(qty))}`;
-    if(chance) html += `<br>Chance: ${escapeHtml(String(chance))}`;
+    html += `<br>${escapeHtml(T('tooltipQuantity'))}: ${escapeHtml(String(qty))}`;
+    if(chance) html += `<br>${escapeHtml(T('tooltipChance'))}: ${escapeHtml(String(chance))}`;
     tooltip.innerHTML = html;
     tooltip.style.display = 'block';
     tooltip.style.left = rect.left + 'px';
@@ -956,17 +1083,23 @@ let extractorSourceLoaded = false;
 function loadExtractorSource() {
     if(extractorSourceLoaded) return;
     extractorSourceLoaded = true;
+    const codeEl = document.getElementById('python-code').firstElementChild;
+    // Preferred: generated scripts/extractor_source.js (window.EXTRACTOR_SOURCE)
+    // works over file:// where fetch for local files is blocked by the browser
+    if(window.EXTRACTOR_SOURCE) {
+        codeEl.textContent = window.EXTRACTOR_SOURCE;
+        return;
+    }
     fetch('scripts/extract_loot_tables.py')
         .then(response => {
             if(!response.ok) throw new Error(response.status);
             return response.text();
         })
         .then(text => {
-            document.getElementById('python-code').firstElementChild.textContent = text;
+            codeEl.textContent = text;
         })
         .catch(() => {
-            document.getElementById('python-code').firstElementChild.textContent =
-                'Could not load scripts/extract_loot_tables.py (fetch unavailable when opened via file://). Open the file directly from the repository instead.';
+            codeEl.textContent = T('extractSourceError');
         });
 }
 
@@ -985,10 +1118,10 @@ window.togglePythonCode = function() {
     
     if(codeBlock.classList.contains('hidden')) {
         codeBlock.classList.remove('hidden');
-        toggleBtn.textContent = 'Hide Source ▲';
+        toggleBtn.textContent = T('hideSource');
     } else {
         codeBlock.classList.add('hidden');
-        toggleBtn.textContent = 'Show Full Source ▼';
+        toggleBtn.textContent = T('showSource');
     }
 };
 
@@ -1016,6 +1149,45 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// Help modal side nav: click scrolls a section into view, scrollspy keeps
+// the active link in sync while the user scrolls manually.
+function initHelpNav() {
+    const nav = document.getElementById('help-nav');
+    const body = document.getElementById('help-body');
+    if(!nav || !body) return;
+    const links = Array.from(nav.querySelectorAll('.nav-link'));
+    if(links.length === 0) return;
+    const setActive = idx => links.forEach((l, i) => l.classList.toggle('active', i === idx));
+    // When content is short, a clicked section cannot always reach the top of
+    // the scroll area (clamped scroll), which lets the scrollspy override the
+    // clicked link right after clicking. A short cooldown keeps the clicked
+    // state authoritative; later manual scroll events re-enable the spy.
+    let spyCooldownTill = 0;
+    links.forEach((link, i) => {
+        link.addEventListener('click', () => {
+            const sec = document.getElementById(link.dataset.target);
+            if(sec) body.scrollTo({ top: Math.max(0, sec.offsetTop - 6), behavior: 'auto' });
+            spyCooldownTill = performance.now() + 650;
+            setActive(i);
+        });
+    });
+    body.addEventListener('scroll', () => {
+        if(performance.now() < spyCooldownTill) return;
+        const maxScroll = body.scrollHeight - body.clientHeight;
+        let best;
+        if(maxScroll > 0 && body.scrollTop >= maxScroll - 2) {
+            best = links.length - 1; // pinned to the end - last section wins
+        } else {
+            best = 0;
+            links.forEach((link, i) => {
+                const sec = document.getElementById(link.dataset.target);
+                if(sec && sec.offsetTop <= body.scrollTop + 48) best = i;
+            });
+        }
+        setActive(best);
+    });
+}
+
 // --- Init ---
 const matchesOnlyToggle = document.getElementById('matches-only');
 if(matchesOnlyToggle) {
@@ -1028,6 +1200,7 @@ if(matchesOnlyToggle) {
 
 const matchesOnlyLabel = document.querySelector('.filter-toggle');
 if(matchesOnlyLabel) {
-    bindHoverTooltip(matchesOnlyLabel, 'Highlight searched item, and collapse other loot table cards.');
+    bindHoverTooltip(matchesOnlyLabel, T('funnelTip'));
 }
+initHelpNav();
 initLootContainer();

@@ -1,13 +1,14 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="UTF-8">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <title>Hytale Loot Viewer</title>
     
     <link rel="icon" type="image/png" href="loot-watcher-ico.png">
-    <link rel="stylesheet" href="style/hytale.css">
+    <link rel="stylesheet" href="style/style.css">
     
     <meta property="og:url" content="https://cloudmcsr.github.io/hytale-loot-watcher/" />
     <meta property="og:type" content="website" />
@@ -26,8 +27,8 @@
     <!-- Upload Overlay -->
     <div id="upload-overlay">
         <div class="upload-box">
-            <h1>Hytale Loot Viewer</h1>
-            <p>Drag & Drop <code>mapped_prefabs_data.json</code> here</p>
+            <h1 data-text="uploadTitle">Hytale Loot Viewer</h1>
+            <p data-text-html="uploadDragDrop">Drag & Drop <code>mapped_prefabs_data.json</code> here</p>
             <button class="btn-upload" onclick="document.getElementById('file-input').click()">Select File</button>
             <input type="file" id="file-input" accept=".json" hidden>
         </div>
@@ -120,15 +121,25 @@
     <div id="help-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Loot Table Viewer</h2>
+                <div class="modal-title-block">
+                    <span class="modal-kicker" data-text="helpKicker">Help</span>
+                    <h2 data-text="modalTitle">Loot Table Viewer</h2>
+                </div>
                 <button class="modal-close" onclick="closeHelp()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
-            <div class="modal-body">
-                <section class="help-section">
-                    <h3>Quick Start</h3>
-                    <ul class="help-list">
+            <div class="modal-layout">
+                <nav class="modal-nav" id="help-nav">
+                    <button class="nav-link active" data-target="help-sec-quick" data-text="helpQuickTitle">Quick Start</button>
+                    <button class="nav-link" data-target="help-sec-tables" data-text="helpTablesTitle">Understanding Loot Tables</button>
+                    <button class="nav-link" data-target="help-sec-generate" data-text="helpGenTitle">Generating Data</button>
+                    <button class="nav-link" data-target="help-sec-tips" data-text="helpTipsTitle">Tips &amp; Tricks</button>
+                </nav>
+                <div class="modal-body" id="help-body">
+                <section class="help-section" id="help-sec-quick">
+                    <h3 id="help-quick-title">Quick Start</h3>
+                    <ul class="help-list" id="help-quick-items">
                         <li><strong>Browse:</strong> Sidebar has Structures and Loot Tables (mobs, blocks, interactions, crops...)</li>
                         <li><strong>Categories:</strong> Dropdown in the sidebar header; a specific category lists its files directly</li>
                         <li><strong>Names:</strong> Entries show display names and ids — both are searchable</li>
@@ -138,52 +149,62 @@
                     </ul>
                 </section>
 
-                <section class="help-section">
-                    <h3>Understanding Loot Tables</h3>
+                <section class="help-section" id="help-sec-tables">
+                    <h3 id="help-tables-title">Understanding Loot Tables</h3>
                     <table class="help-table">
-                        <tr><th>What you see</th><th>Meaning</th></tr>
-                        <tr><td><code>ROLL (pick N)</code></td><td>Picks N items among the slots below</td></tr>
-                        <tr><td><code>Included: [Table]</code></td><td>Another loot table rolled inline</td></tr>
-                        <tr><td>% on item slot</td><td>Chance the item appears; 100% = always</td></tr>
-                        <tr><td>% on a ROLL row</td><td>Chance the roll happens; none = always</td></tr>
-                        <tr><td>Nothing slot</td><td>The pick rolled no item</td></tr>
+                        <tr><th id="help-th-see">What you see</th><th id="help-th-meaning">Meaning</th></tr>
+                        <tr><td><code>ROLL (pick N)</code></td><td data-text="helpRowRoll">Picks N items among the slots below</td></tr>
+                        <tr><td><code>INDIVIDUAL ROLLS (N)</code></td><td data-text="helpRowIndividual">Each slot is its own independent roll — the badge is that roll's chance</td></tr>
+                        <tr><td><code>Included: [Table]</code></td><td data-text="helpRowIncluded">Another loot table rolled inline</td></tr>
+                        <tr><td>% on item slot</td><td data-text="helpRowItemChance">Chance the item appears; 100% = always</td></tr>
+                        <tr><td>% on a ROLL row</td><td data-text="helpRowRollChance">Chance the roll happens; none = always</td></tr>
+                        <tr><td>Nothing slot</td><td data-text="helpRowNothing">The pick rolled no item</td></tr>
                     </table>
                 </section>
 
-                <section class="help-section">
-                    <h3>Generating Data for Other Versions</h3>
-                    <p class="help-desc">You can generate data for any Hytale version using the files included with the game. No coding skills required!</p>
-                    
-                    <h4>Step 1: Locate Assets.zip</h4>
-                    <p class="help-desc">Go to your Hytale installation folder and find this file:</p>
-                    <pre class="code-block"><code>.../Hytale/Install/package/latest/Assets.zip</code></pre>
+                <section class="help-section" id="help-sec-generate">
+                    <h3 id="help-gen-title">Generating Data for Other Versions</h3>
+                    <p class="help-desc" data-text="helpGenIntro">You can generate data for any Hytale version using the files included with the game. No coding skills required!</p>
 
-                    <h4>Step 2: Extract Required Folders</h4>
-                    <p class="help-desc">Open <code>Assets.zip</code> and navigate into <code>Assets/Server/</code>.</p>
-                    <p class="help-desc">Extract these folders to the same folder as this tool:</p>
+                    <div class="help-step">
+                    <h4 id="help-step1">Locate Assets.zip</h4>
+                    <p class="help-desc" data-text="helpStep1Desc">Go to your Hytale installation folder and find this file:</p>
+                    <pre class="code-block"><code data-text="helpStep1Code">.../Hytale/Install/package/latest/Assets.zip</code></pre>
+                    </div>
+
+                    <div class="help-step">
+                    <h4 id="help-step2">Extract Required Folders</h4>
+                    <p class="help-desc" data-text-html="helpStep2Desc1">Open <code>Assets.zip</code> and navigate into <code>Assets/Server/</code>.</p>
+                    <p class="help-desc" data-text="helpStep2Desc2">Extract these folders to the same folder as this tool:</p>
                     <ul class="help-list">
-                        <li><code>Prefabs</code> (contains structure data)</li>
-                        <li><code>Drops</code> (all loot tables: chests, mobs, blocks, interactions)</li>
+                        <li data-text-html="helpStep2Prefabs"><code>Prefabs</code> (contains structure data)</li>
+                        <li data-text-html="helpStep2Drops"><code>Drops</code> (all loot tables: chests, mobs, blocks, interactions)</li>
                     </ul>
+                    </div>
 
-                    <h4>Step 3: Run the Script</h4>
-                    <p class="help-desc">Run the script below to generate a new <code>mapped_prefabs_data.json</code> file. Then run <code>scripts/generate_app_data.py</code> to merge it with the <code>Drops</code> folder into <code>data.js</code>.</p>
-                        <button class="code-toggle" onclick="togglePythonCode()">Show Full Source â–¼</button>
+                    <div class="help-step">
+                    <h4 id="help-step3">Run the Script</h4>
+                    <p class="help-desc" data-text-html="helpStep3Desc">Run the script below to generate a new <code>mapped_prefabs_data.json</code> file. Then run <code>scripts/generate_app_data.py</code> to merge it with the <code>Drops</code> folder into <code>data.js</code>.</p>
+                        <button class="code-toggle" onclick="togglePythonCode()">Show Full Source ▼</button>
                         <pre class="code-block code-full hidden" id="python-code"><code>Loading source...</code></pre>
+                    </div>
                 </section>
 
-                <section class="help-section">
-                    <h3>Tips &amp; Tricks</h3>
-                    <ul class="help-list">
+                <section class="help-section" id="help-sec-tips">
+                    <h3 id="help-tips-title">Tips &amp; Tricks</h3>
+                    <ul class="help-list" id="help-tips-items">
                         <li>Hover over item icons for detailed tooltips</li>
                         <li>Missing icons show "?" - run <code>showMissingIconsReport()</code> in console</li>
                         <li>Press <kbd>Esc</kbd> to close this help dialog</li>
                     </ul>
                 </section>
+                </div>
             </div>
         </div>
     </div>
 
+    <script src="texts.js" defer></script>
+    <script src="scripts/extractor_source.js" defer></script>
     <script src="script.js" defer></script>
 </body>
 </html>

@@ -16,7 +16,7 @@ window.TEXTS = {
     brandTitle: 'Loot Watcher',
     brandSub: 'Hytale Client',
     filterCategoriesTip: 'Filter categories',
-    scrollHint: 'Shift+Scroll for horizontal scroll',
+    scrollHint: 'Shift+Scroll for horizontal scroll<br>Alt+LMB to collapse all folders inside',
 
     // Category dropdown display labels (option VALUES stay canonical:
     // 'All' / 'Structures' / 'Loot Tables' / data categories)
@@ -101,7 +101,7 @@ window.TEXTS = {
     helpStep2Prefabs: '<code>Prefabs</code> (contains structure data)',
     helpStep2Drops: '<code>Drops</code> (all loot tables: chests, mobs, blocks, interactions)',
     helpStep3: 'Run the Script',
-    helpStep3Desc: 'Run the script below to generate a new <code>mapped_prefabs_data.json</code> file. Then run <code>scripts/generate_app_data.py</code> to merge it with the <code>Drops</code> folder into <code>data.js</code>.',
+    helpStep3Desc: 'Run the script below to generate a new <code>mapped_prefabs_data.json</code> file. Then run <code>scripts/generate_app_data.py</code> to merge it with the <code>Drops</code> folder into three files: <code>data.js</code> (structures + loot tables), <code>display_names.js</code> (display names) and <code>icon_mappings.js</code> (mismatch-only icon overrides).',
 
     helpTipsTitle: 'Tips & Tricks',
     helpTipsItems: '<li>Hover over item icons for detailed tooltips</li>' +
@@ -124,7 +124,7 @@ window.TEXT_ATTRS = [
     { sel: '#btn-open', attr: 'title', key: 'openFileBtnTitle' },
     { sel: '#search', attr: 'placeholder', key: 'searchPlaceholder' },
     { sel: '#search-clear', attr: 'title', key: 'clearBtnTitle' },
-    { sel: '.sidebar-foot', attr: 'text', key: 'scrollHint' },
+    { sel: '.sidebar-foot', attr: 'html', key: 'scrollHint' },
     { sel: '#empty-state > div:last-child', attr: 'text', key: 'emptyState' },
     { sel: '#help-modal h2', attr: 'text', key: 'modalTitle' },
     { sel: '#help-quick-title', attr: 'text', key: 'helpQuickTitle' },
@@ -133,17 +133,9 @@ window.TEXT_ATTRS = [
     { sel: '#help-th-see', attr: 'text', key: 'helpThSee' },
     { sel: '#help-th-meaning', attr: 'text', key: 'helpThMeaning' },
     { sel: '#help-gen-title', attr: 'text', key: 'helpGenTitle' },
-    { sel: '#help-gen-intro', attr: 'text', key: 'helpGenIntro' },
     { sel: '#help-step1', attr: 'text', key: 'helpStep1' },
-    { sel: '#help-step1-desc', attr: 'text', key: 'helpStep1Desc' },
-    { sel: '#help-step1-code', attr: 'text', key: 'helpStep1Code' },
     { sel: '#help-step2', attr: 'text', key: 'helpStep2' },
-    { sel: '#help-step2-desc1', attr: 'html', key: 'helpStep2Desc1' },
-    { sel: '#help-step2-desc2', attr: 'text', key: 'helpStep2Desc2' },
-    { sel: '#help-step2-prefabs', attr: 'html', key: 'helpStep2Prefabs' },
-    { sel: '#help-step2-drops', attr: 'html', key: 'helpStep2Drops' },
     { sel: '#help-step3', attr: 'text', key: 'helpStep3' },
-    { sel: '#help-step3-desc', attr: 'html', key: 'helpStep3Desc' },
     { sel: '#help-tips-title', attr: 'text', key: 'helpTipsTitle' },
     { sel: '#help-tips-items', attr: 'html', key: 'helpTipsItems' }
 ];

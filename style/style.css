@@ -298,7 +298,7 @@ select {
 }
 
 .search-box .filter-toggle:has(input:checked) {
-    color: var(--accent-2);
+    color: var(--accent);
     background: none;
     border-color: transparent;
 }
@@ -309,6 +309,14 @@ select {
     overflow: auto;
     padding: 2px 8px 14px;
     width: 100%;
+}
+
+/* The canvas wrapper grows to the widest row, so labels' min-width:100%
+   resolves against the full scroll extent - hover/selection bands span the
+   whole scrollable width instead of stopping at the visible edge */
+.tree-root > .tree-canvas {
+    width: max-content;
+    min-width: 100%;
 }
 
 /* Tree: one family everywhere, hierarchy by indent only */
@@ -376,6 +384,12 @@ select {
 .arrow svg {
     width: 9px;
     height: 9px;
+    transition: transform 0.1s;
+}
+
+/* Folder chevron points right when closed, down when open */
+.node-item.expanded > .node-label .arrow svg {
+    transform: rotate(90deg);
 }
 
 .node-item > .node-children {
@@ -957,6 +971,22 @@ select {
 
 .logic-row:hover {
     background: rgba(10, 16, 26, .66) !important;
+}
+
+/* Roll-row chevron: points down when expanded (default), right when collapsed.
+   State lives entirely in the row's expanded/collapsed classes. */
+.logic-row .row-arrow {
+    flex: none;
+    width: 12px;
+    text-align: center;
+}
+
+.logic-row .row-arrow::before {
+    content: '\25BC';
+}
+
+.logic-row.collapsed .row-arrow::before {
+    content: '\25B6';
 }
 
 .row-chance {

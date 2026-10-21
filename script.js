@@ -26,6 +26,14 @@ function displaySeg(seg) {
 
 function applyStaticTexts() {
     if(!window.TEXTS) { console.log('texts.js loaded? window.TEXTS missing'); return; }
+    // Attribute-based bindings first: elements self-describe their texts.js
+    // key with data-text (textContent) / data-text-html (innerHTML)
+    document.querySelectorAll('[data-text], [data-text-html]').forEach(el => {
+        const textKey = el.getAttribute('data-text');
+        const htmlKey = el.getAttribute('data-text-html');
+        if(textKey && T(textKey) != null) el.textContent = T(textKey);
+        else if(htmlKey && T(htmlKey) != null) el.innerHTML = T(htmlKey);
+    });
     (window.TEXT_ATTRS || []).forEach(({ sel, attr, key }) => {
         const el = document.querySelector(sel);
         if(!el) return;
@@ -39,6 +47,8 @@ function applyStaticTexts() {
 
 // --- UI state persistence (checks in locally so a refresh keeps your session) ---
 const LS_KEY = 'lw_ui_state_v1';
+// Expanded sidebar folders (persisted); paths are raw tree keys joined by '/'
+let expandedPaths = new Set();
 
 function saveUiState() {
     try {
@@ -46,7 +56,8 @@ function saveUiState() {
             entry: currentEntry ? { kind: currentEntry.kind, name: currentEntry.name } : null,
             term: searchTerm,
             matchesOnly,
-            category: activeCategory
+            category: activeCategory,
+            expanded: Array.from(expandedPaths)
         }));
     } catch (e) { /* file:// with blocked storage - ignore */ }
 }
@@ -57,6 +68,10 @@ function restoreUiState() {
         saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
     } catch (e) { return; }
     if(!saved) return;
+
+    if(Array.isArray(saved.expanded)) {
+        saved.expanded.forEach(p => expandedPaths.add(p));
+    }
 
     if(saved.category && activeCategory !== saved.category) {
         activeCategory = saved.category;
@@ -98,8 +113,8 @@ window.addEventListener('DOMContentLoaded', () => {
         document.getElementById('upload-overlay').classList.add('hidden');
         applyStaticTexts();
         initCategorySelect();
-        buildSidebar();
         restoreUiState();
+        if(!searchTerm) buildSidebar();
     } else {
         // Fallback to fetch if data.js missing/empty
         fetch('data/mapped_prefabs_data.json')
@@ -112,8 +127,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('upload-overlay').classList.add('hidden');
                 applyStaticTexts();
                 initCategorySelect();
-                buildSidebar();
                 restoreUiState();
+                if(!searchTerm) buildSidebar();
             })
             .catch(err => console.log('Waiting for file upload...', err));
     }
@@ -176,8 +191,10 @@ function collectEntries() {
             path: ['Loot Tables', ...(d.category ? [d.category] : []), ...rest],
             name: d.name,
             category: d.category || 'Loot Tables',
-            displayName: d.displayName,
-            icon: d.icon,
+            // Batch E: names/icons live in display_names.js + icon_mappings.js,
+            // not in data.js - resolve here via the helper globals
+            displayName: window.DISPLAY_NAMES ? DISPLAY_NAMES.drops[d.name] : undefined,
+            icon: window.getDropIcon ? getDropIcon(d.name) : undefined,
             root: d.root
         });
     });
@@ -270,8 +287,15 @@ function renderHighlightedName(key, highlight) {
     return `${escapeHtml(key.slice(0, i))}<mark>${escapeHtml(key.slice(i, i + highlight.length))}</mark>${escapeHtml(key.slice(i + highlight.length))}`;
 }
 
-function renderTreeNode(obj, expandAll = false, highlight = '') {
+function renderTreeNode(obj, expandAll = false, highlight = '', prefix = []) {
     const wrapper = document.createElement('div');
+    // The visible viewport (the .tree-root scroller itself) is what
+    // percentage widths resolve against when the tree overflows
+    // horizontally, so rows' hover/selection bands stopped at the visible
+    // edge while long rows kept scrolling (feedback 39). Growing this thin
+    // canvas wrapper to the widest row makes every row's min-width:100%
+    // resolve against the full scroll extent instead.
+    if(prefix.length === 0) wrapper.className = 'tree-canvas';
     const keys = Object.keys(obj).sort((a,b) => {
         const tA = obj[a]._type || 'folder';
         const tB = obj[b]._type || 'folder';
@@ -285,11 +309,14 @@ function renderTreeNode(obj, expandAll = false, highlight = '') {
         const isFolder = item._type === 'folder';
         const div = document.createElement('div');
         div.className = 'node-item';
-        
-        // Auto-expand if requested or marked
-        if(isFolder && (expandAll || item._expanded)) {
+        const rawKey = key;
+        const pathKey = [...prefix, rawKey].join('/');
+
+        // Auto-expand if requested (search results) or persisted as expanded
+        if(isFolder && (expandAll || expandedPaths.has(pathKey))) {
             div.classList.add('expanded');
         }
+        if(isFolder) div.dataset.path = pathKey;
 
         key = displaySeg(key);
     const label = document.createElement('div');
@@ -305,8 +332,25 @@ function renderTreeNode(obj, expandAll = false, highlight = '') {
                 </span> 
                 <span class="node-name">${renderHighlightedName(key, highlight)} ${item._count ? `<span class="node-count">(${item._count})</span>` : ''}</span>`;
             
-            label.onclick = () => {
+            label.onclick = (ev) => {
+                if(ev.altKey) {
+                    // Recursive collapse: close this folder AND every folder
+                    // inside it, so reopening the parent shows them collapsed.
+                    if(div.classList.contains('expanded')) {
+                        div.querySelectorAll('.node-item[data-path]').forEach(n => {
+                            n.classList.remove('expanded');
+                            expandedPaths.delete(n.dataset.path);
+                        });
+                        div.classList.remove('expanded');
+                        expandedPaths.delete(pathKey);
+                        saveUiState();
+                    }
+                    return;
+                }
                 div.classList.toggle('expanded');
+                if(div.classList.contains('expanded')) expandedPaths.add(pathKey);
+                else expandedPaths.delete(pathKey);
+                saveUiState();
             };
         } else {
             const entry = item._data;
@@ -325,6 +369,11 @@ function renderTreeNode(obj, expandAll = false, highlight = '') {
                 <span class="node-icon icon-file">${iconMarkup}</span>
                 <span class="node-name">${primary}</span>`;
 
+            // selection highlight survives tree rebuilds / refresh
+            if(currentEntry && currentEntry.kind === entry.kind && currentEntry.name === entry.name) {
+                label.classList.add('active');
+            }
+
             label.onclick = () => {
                 document.querySelectorAll('.node-label').forEach(el => el.classList.remove('active'));
                 label.classList.add('active');
@@ -336,7 +385,7 @@ function renderTreeNode(obj, expandAll = false, highlight = '') {
         if(isFolder) {
             const childrenDiv = document.createElement('div');
             childrenDiv.className = 'node-children';
-            childrenDiv.appendChild(renderTreeNode(item._children, expandAll, highlight));
+            childrenDiv.appendChild(renderTreeNode(item._children, expandAll, highlight, [...prefix, rawKey]));
             div.appendChild(childrenDiv);
         }
         wrapper.appendChild(div);
@@ -365,7 +414,7 @@ function itemBaseName(itemId) {
 }
 
 function itemDisplayName(itemId) {
-    return (DATA.itemNames || {})[itemBaseName(itemId)] || null;
+    return (DISPLAY_NAMES.items || {})[itemBaseName(itemId)] || null;
 }
 
 // Does the entry itself swing items? (content check, recursive via Droplist)
@@ -604,7 +653,7 @@ function coalesceFlatGroups(parent, topLevel) {
     const head = document.createElement('div');
     head.className = 'logic-row expanded';
     head.dataset.toggle = selId;
-    head.innerHTML = `&#9660; ${tf('flatRollsLabel', { count: slots.length })}`;
+    head.innerHTML = `<span class="row-arrow"></span> ${tf('flatRollsLabel', { count: slots.length })}`;
     const content = document.createElement('div');
     content.className = 'selection-content';
     content.id = selId;
@@ -892,7 +941,7 @@ function renderLootGrid(node, parentChance = 1) {
         }
 
         const selId = `sel-${selectionCounter++}`;
-        html += `<div class="logic-row expanded" data-toggle="${selId}">&#9660; ${rowLabel}${badge}</div>`;
+        html += `<div class="logic-row expanded" data-toggle="${selId}"><span class="row-arrow"></span> ${rowLabel}${badge}</div>`;
         html += `<div class="selection-content" id="${selId}">`;
         html += wrapGroups(members.map(c => {
             const cond = sum > 0
@@ -912,8 +961,8 @@ function renderLootGrid(node, parentChance = 1) {
     else if(node.Type === "Droplist") {
         const safeId = node.DroplistId.replace(/[^a-zA-Z0-9]/g, '');
         html += `
-            <div class="logic-row droplist-head" data-droplist="${escapeAttr(node.DroplistId)}">
-                <span>${escapeHtml(T('includedTitle'))}</span><a class="link">${escapeHtml(node.DroplistId)}</a>
+            <div class="logic-row droplist-head expanded" data-droplist="${escapeAttr(node.DroplistId)}">
+                <span class="row-arrow"></span><span>${escapeHtml(T('includedTitle'))}</span><a class="link">${escapeHtml(node.DroplistId)}</a>
             </div>
             <div class="droplist-content" id="dl-${safeId}">
         `;
@@ -965,14 +1014,11 @@ window.toggleSelection = function(selIdOrRow) {
         content.classList.remove('hidden');
         header.classList.remove('collapsed');
         header.classList.add('expanded');
-        // Change to down arrow
-        header.innerHTML = header.innerHTML.replace('&#9654;', '&#9660;');
+        // the chevron follows the expanded class (style.css .row-arrow::before)
     } else {
         content.classList.add('hidden');
         header.classList.add('collapsed');
         header.classList.remove('expanded');
-        // Change to right arrow
-        header.innerHTML = header.innerHTML.replace('&#9660;', '&#9654;');
     }
 };
 
@@ -987,6 +1033,8 @@ function toggleDroplistGrid(el, droplistId) {
 
     if(contentDiv.classList.contains('hidden')) {
         contentDiv.classList.remove('hidden');
+        el.classList.add('expanded');
+        el.classList.remove('collapsed');
         if(!contentDiv.innerHTML) {
             const def = DATA.loot_table_definitions[droplistId];
             if(def) {
@@ -997,6 +1045,8 @@ function toggleDroplistGrid(el, droplistId) {
         }
     } else {
         contentDiv.classList.add('hidden');
+        el.classList.add('collapsed');
+        el.classList.remove('expanded');
     }
 }
 
@@ -1004,6 +1054,29 @@ function toggleDroplistGrid(el, droplistId) {
 const tooltip = document.createElement('div');
 tooltip.className = 'slot-tooltip';
 document.body.appendChild(tooltip);
+
+// Places the shared tooltip inside the viewport: clamps horizontally to the
+// edges and flips above the anchor when it would overflow the bottom (or
+// pins to the bottom edge for very tall tooltips).
+function placeTooltipInViewport(anchorRect, gap) {
+    const tRect = tooltip.getBoundingClientRect();
+    const margin = 8;
+    let left = anchorRect.left;
+    let top = anchorRect.bottom + gap;
+    if(left + tRect.width > window.innerWidth - margin) {
+        left = window.innerWidth - margin - tRect.width;
+    }
+    if(left < margin) left = margin;
+    if(top + tRect.height > window.innerHeight - margin) {
+        top = anchorRect.top - tRect.height - gap;
+    }
+    if(top < margin) top = margin;
+    if(top + tRect.height > window.innerHeight - margin) {
+        top = Math.max(margin, window.innerHeight - margin - tRect.height);
+    }
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+}
 
 function showTooltip(el, name, qty, chance) {
     const rect = el.getBoundingClientRect();
@@ -1017,8 +1090,7 @@ function showTooltip(el, name, qty, chance) {
     if(chance) html += `<br>${escapeHtml(T('tooltipChance'))}: ${escapeHtml(String(chance))}`;
     tooltip.innerHTML = html;
     tooltip.style.display = 'block';
-    tooltip.style.left = rect.left + 'px';
-    tooltip.style.top = (rect.bottom + 5) + 'px';
+    placeTooltipInViewport(rect, 5);
 }
 
 function hideTooltip() {
@@ -1033,8 +1105,7 @@ function showElementTooltip(el, text) {
     tooltip.style.maxWidth = '320px';
     tooltip.innerHTML = escapeHtml(text);
     tooltip.style.display = 'block';
-    tooltip.style.left = rect.left + 'px';
-    tooltip.style.top = (rect.bottom + 6) + 'px';
+    placeTooltipInViewport(rect, 6);
 }
 
 function bindHoverTooltip(el, text) {

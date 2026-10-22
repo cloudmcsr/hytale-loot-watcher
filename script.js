@@ -355,7 +355,7 @@ function renderTreeNode(obj, expandAll = false, highlight = '', prefix = []) {
         } else {
             const entry = item._data;
             const iconMarkup = entry.icon
-                ? `<img class="node-thumb" src="${escapeAttr(entry.icon)}" alt="">`
+                ? `<img class="node-thumb" loading="lazy" src="${escapeAttr(entry.icon)}" alt="">`
                 : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`;
             // Display name (if available) as primary + raw id as secondary
             const subId = entry.displayName && entry.displayName !== key
@@ -995,7 +995,7 @@ function renderLootGrid(node, parentChance = 1) {
 
         html += `
             <div class="item-slot" data-item-id="${escapeAttr(node.Item.ItemId)}" data-qty="${escapeAttr(String(qty))}" data-chance="${chanceDisplay}">
-                <img src="${iconPath}" onerror="trackMissingIcon('${escapeAttr(node.Item.ItemId)}', this)" data-item-id="${escapeAttr(node.Item.ItemId)}">
+                <img loading="lazy" src="${iconPath}" onerror="trackMissingIcon('${escapeAttr(node.Item.ItemId)}', this)" data-item-id="${escapeAttr(node.Item.ItemId)}">
                 <span class="item-qty">${qty}</span>
                 <span class="item-chance">${chanceDisplay}</span>
             </div>

@@ -1,4 +1,5 @@
 {
+  "iterations": 100000,
   "data": "../data.js",
   "loot_chance": "loot_chance.js",
   "loot_generator": "loot_generator.js",

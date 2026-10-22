@@ -20,7 +20,7 @@ const DATA = window.DEFAULT_DATA;
 const LootChance = window.LootChance;
 const LootGenerator = window.LootGenerator;
 
-const ITER = 20000;        // batches per table (same as the harness)
+const ITER = CFG.iterations || 100000;   // batches per table (config.json: "iterations")
 const MIN_EXPECTED = 5;    // skip leaves with fewer expected fires
 const Z_LIMIT = 4;         // flag |z| beyond this
 const SCATTER_STRIDE = 7;  // sample every Nth compared leaf for the scatter
@@ -54,6 +54,7 @@ const PRED_BINS = [0.5, 1, 5, 10, 20, 40, 70, 101];  // pred% edges
 const predBins = PRED_BINS.map((hi, bi) => ({ lo: bi === 0 ? 0 : PRED_BINS[bi - 1], hi, n: 0, zSum: 0, zSq: 0, tail2: 0 }));
 let leavesChecked = 0, leavesSkipped = 0, tail1 = 0, tail2 = 0, tail3 = 0, tail4 = 0;
 let absPpSum = 0, absPpMax = 0;
+const leafPreds = [];   // every compared leaf's predicted chance (for the exact expected histogram)
 const tablesOut = [];
 let totalFlaggedLeaves = 0;
 
@@ -75,6 +76,7 @@ for (let ti = 0; ti < tables.length; ti++) {
     for (const leaf of leaves) {
       const pred = leaf.chance;
       if (pred * ITER < MIN_EXPECTED) { skipped++; leavesSkipped++; continue; }
+      leafPreds.push(+pred.toFixed(6));   // per-leaf prediction for exact expected-histogram
       const emp = (present.get(leaf) || 0) / ITER;
       const sigma = Math.sqrt(pred * (1 - pred) / ITER);
       const z = sigma > 0 ? (emp - pred) / sigma : (emp === pred ? 0 : (emp < pred ? -Infinity : Infinity));
@@ -162,6 +164,7 @@ const out = {
   },
   predBins: predBins.filter(b => b.n > 0).map(b => ({ lo: b.lo, hi: b.hi, n: b.n, meanZ: +(b.zSum / b.n).toFixed(3), sdZ: +Math.sqrt(Math.max(0, b.zSq / b.n - (b.zSum / b.n) ** 2)).toFixed(3), tail2Rate: +(b.tail2 / b.n * 100).toFixed(2) })),
   scatter,
+  leafPreds,
   worstTables: tablesOut.slice().sort((a, b) => b[3] - a[3]).slice(0, 10).map(r => ({ table: r[0], maxAbsZ: r[3], meanZ: r[4], sdZ: r[5], flagged: r[6] || [] })),
   flaggedByTable: tablesOut.filter(r => r[6]).map(r => ({ table: r[0], flagged: r[6] })),
   deepRun: { detail: 'Zone3_Kweebec_Tier3 / Armor_Thorium_Legs re-run at 400000 iterations (seed 0xBEEF)', iterations: 400000, predPct: 0.7059, empPct: 0.69, z: -1.2 },

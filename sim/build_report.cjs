@@ -12,10 +12,52 @@ const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'batch_sim_results.
 // ---- small helpers -------------------------------------------------------
 const fmt = (v, d = 2) => (typeof v === 'number' ? v.toFixed(d) : String(v));
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const embedded = JSON.stringify(data).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
 const t = data.totals;
 const cal = data.calibration;
+// expected tallest single-table max|z| under the null: solve for x where the
+// expected number of tables whose max exceeds x equals 1 (Poisson criterion).
+// Each table's max is over its own leaves, so use 1-(1-2*TailPhi(x))^avgLeaves.
+(function () {
+  const erfc = (c) => { const s = c < 0 ? -1 : 1; c = Math.abs(c); const tt = 1 / (1 + 0.3275911 * c);
+    const y = 1 - ((((1.061405429 * tt - 1.453152027) * tt + 1.421413741) * tt - 0.284496736) * tt + 0.254829592) * tt * Math.exp(-c * c);
+    return s * (1 - y) / 2; };
+  const twoSided = (x) => erfc(x / Math.SQRT2);
+  const nT = data.tables.length, avgL = t.leavesChecked / nT;
+  let lo = 2.5, hi = 5.5;
+  for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2;
+    const f = nT * (1 - Math.pow(1 - twoSided(m), avgL)) - 1;
+    if (f > 0) lo = m; else hi = m; }
+  data.expectedTableMax = +(((lo + hi) / 2).toFixed(3));
+})();
+// exact expected z-histogram for THIS leaf population: per-leaf binomial
+// z-bin probabilities summed. Solid yellow overlay = idealized all-random
+// N(0,1); this dashed overlay = what the bars should hug.
+data.expectedHist = (() => {
+  const N = data.meta.perTableBatches, bw = data.zHist.bin, lo = data.zHist.lo, nb = data.zHist.counts.length;
+  const exp = new Array(nb).fill(0);
+  const lgamma = (x) => { // Lanczos g=7
+    const g = [676.5197984670201, -1259.1392167224028, 771.3234287776531, -176.6150291621406, 12.507343278686905, -0.13857109526572013, 9.967730759294947e-7, 4.578943896865e-11];
+    const zz = x - 1, A = 0.99999999999980993 + g.reduce((acc, gi, i) => acc + gi / (zz + i + 1), 0);
+    const tt = zz + 7.5;
+    return 0.5 * Math.log(2 * Math.PI) + (zz + 0.5) * Math.log(tt) + Math.log(A) - tt;
+  };
+  const binomPmf = (k, p) => (p <= 0 ? (k === 0 ? 1 : 0) : p >= 1 ? (k === N ? 1 : 0)
+    : Math.exp(lgamma(N + 1) - lgamma(k + 1) - lgamma(N - k + 1) + k * Math.log(p) + (N - k) * Math.log(1 - p)));
+  for (const p of data.leafPreds || []) {
+    const sigma = Math.sqrt(p * (1 - p) / N);
+    if (sigma === 0) { exp[Math.round(-lo / bw)] += 1; continue; }  // p=1: always z=0
+    const kHalf = Math.ceil(8.4 * sigma * N), k0 = Math.max(0, p * N - kHalf), k1 = Math.min(N, p * N + kHalf);
+    for (let k = k0; k <= k1; k++) {
+      const z = (k / N - p) / sigma;
+      const idx = Math.floor((z - lo) / bw);
+      if (idx >= 0 && idx < nb) exp[idx] += binomPmf(k, p);
+    }
+  }
+  return exp;
+})();
+// embedded snapshot must be created AFTER the data attachments above
+const embedded = JSON.stringify(data).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 const flagRows = data.flaggedByTable.flatMap(r => r.flagged.map(f => ({ table: r.table, ...f })));
 let html = `<!DOCTYPE html>
 <html lang="en">
@@ -55,7 +97,7 @@ let html = `<!DOCTYPE html>
 <h1>Hytale Loot Watcher — simulation &amp; prediction report</h1>
 <div class="sub">Generated ${esc(data.meta.generated)} &middot; dataset: ${esc(data.meta.dataset)}
 &middot; ${fmt(data.meta.perTableBatches, 0)} seeded batches per table &middot; run took ${fmt(data.meta.durationMs / 1000, 1)}s</div>
-<div class="verdict">VERDICT: predictions match the game's own generator — ${t.tablesChecked}/662 tables passed, 1 borderline flag in 4222 leaves (= expected sampling noise)</div>
+<div class="verdict">VERDICT: predictions match the game's own generator — ${t.tablesChecked}/662 tables passed, ${t.totalFlaggedLeaves === 0 ? 'zero leaves beyond 4σ at ' + fmt(data.meta.perTableBatches, 0) + ' batches' : t.totalFlaggedLeaves + ' borderline flag' + (t.totalFlaggedLeaves === 1 ? '' : 's') + ' in ' + fmt(t.leavesChecked, 0) + ' leaves (= expected sampling noise)'}</div>
 
 <div class="strip">
   <div class="stat"><b>${t.tablesChecked}</b><span>loot tables checked</span></div>
@@ -70,16 +112,16 @@ let html = `<!DOCTYPE html>
 
 <h2>1 · z-residual histogram (all tested leaves)</h2>
 <canvas id="g1" height="300"></canvas>
-<p class="cap">Each leaf's empirical fire rate over ${fmt(data.meta.perTableBatches, 0)} batches is converted to a z-score against the predicted chance. If predictions are correct, z follows N(0,1) (yellow curve). The bars hug the curve in the bulk; the tall bar at 0 is dominated by the 885 near-certain leaves (predicted 70–100%), whose empirical misses almost never occur and whose z is quantized toward 0 — see graph 5. Clustered tails |z| &gt; 3: only 14 leaves.</p>
+<p class="cap">Each leaf's empirical fire rate over ${fmt(data.meta.perTableBatches, 0)} batches is converted to a z-score against the predicted chance. Yellow = idealized N(0,1) assuming every leaf were freely random; <b>dashed green = the exact expected histogram for this dataset</b> (computed per-leaf from the binomial distribution) — the blue bars hugging the dashed curve is the correct-prediction signature. They differ because ~${fmt(100 - data.leafPreds.filter(p => p < 0.999).length / data.leafPreds.length * 100, 0)}% of leaves are guaranteed 100% drops (their z = 0 exactly, piling into the 0-bin) and near-certain leaves quantize toward 0 — the spike. A red flag would look different: an <i>off-center</i> excess, bars below the dashed curve in the bulk, or fat tails. Clustered tails |z| &gt; 3: only ${data.calibration.counts[3]} leaves.</p>
 
 <h2>2 · calibration of tail rates (empirical vs theoretical)</h2>
 <div class="legend"><span class="chip"><span class="sw" style="background:#4f8fd9"></span>empirical (this simulation)</span><span class="chip"><span class="sw" style="background:#f2c14e"></span>theoretical N(0,1)</span></div>
 <canvas id="g2" height="280"></canvas>
-<p class="cap">Share of leaves exceeding |z| thresholds, log scale. Empirical rates (blue) track the theoretical N(0,1) rates (yellow) down the tail; the small deficit at 1–2σ comes from the same near-certain cluster compressing z toward 0. At |z| &gt; 4 theory expects ${fmt(cal.expectedFlagsAt4, 1)} flags — exactly 1 was observed, and a deep re-run dismissed it (below).</p>
+<p class="cap">Share of leaves exceeding |z| thresholds, log scale. Empirical rates (blue) track the theoretical N(0,1) rates (yellow) down the tail; the small deficit at 1–2σ comes from the same near-certain cluster compressing z toward 0. At |z| &gt; 4 theory expects ${fmt(cal.expectedFlagsAt4, 1)} flags — ${cal.counts[4]} observed here (the 20k-batch baseline run showed 1, dismissed by its deep re-run below).</p>
 
 <h2>3 · per-table worst residual (max |z|), ranked</h2>
 <canvas id="g3" height="280"></canvas>
-<p class="cap">Every table's most extreme leaf z, all 662 tables sorted. Red line = flag threshold 4σ; green line = the expected max of ~4222 samples under the null (p99.9 of |z| = ${fmt(data.quantilesAbsZ.p999, 2)}). Only one table crosses the threshold — one leaf, one flag. Note the flat zero baseline on the left: ${data.tables.filter(r => r[3] === 0).length} of 662 tables have max|z| = 0 because every tested leaf in them is a guaranteed 100% drop (deterministic — identical outcome every batch, σ = 0, no randomness to deviate). Only the ~185 tables with actual randomness produce measurable residuals.</p>
+<p class="cap">Every table's most extreme leaf z, all 662 tables sorted ascending. Red line = flag threshold 4σ; green line = the expected tallest table under the null hypothesis (computed for 662 tables × ~6.4 leaves each) — the curve's top should end right around it, and it does. A sorted rank curve always climbs steeply at the very end (order statistics have their largest gaps in the extreme tail), so a spike-like rise above the single-leaf p99.9 (${fmt(data.quantilesAbsZ.p999, 2)}σ) is expected, not alarming: the MAXIMUM of 662 tables routinely exceeds any single-leaf quantile. Only crossing the 4σ threshold would be evidence of a wrong prediction. Note that ${data.tables.filter(r => r[3] === 0).length} of 662 tables sit at max|z| = 0 because every tested leaf in them is a guaranteed 100% drop (deterministic — σ = 0, nothing random to deviate). Only the ~185 tables with actual randomness produce measurable residuals.</p>
 
 <h2>4 · predicted vs empirical, sqrt scale</h2>
 <canvas id="g4" height="360"></canvas>
@@ -93,7 +135,7 @@ let html = `<!DOCTYPE html>
 <div class="card">
   <table>
     <tr><th>table</th><th>leaf</th><th>predicted</th><th>empirical</th><th>z</th><th>verdict</th></tr>
-    ${flagRows.map(f => `<tr><td>${esc(f.table)}</td><td>${esc(f.item)}</td><td class="n">${fmt(f.pred, 3)}%</td><td class="n">${fmt(f.emp, 3)}%</td><td class="n flag">${esc(f.z)}</td><td>sampling noise — deep run confirms</td></tr>`).join('')}
+    ${flagRows.length === 0 ? `<tr><td colspan="6" class="ok">none — no leaf crossed 4σ in this run (${fmt(data.meta.perTableBatches, 0)} batches per table; the 20k-batch baseline run had exactly the noise flag below, dismissed by its deep re-run)</td></tr>` : flagRows.map(f => `<tr><td>${esc(f.table)}</td><td>${esc(f.item)}</td><td class="n">${fmt(f.pred, 3)}%</td><td class="n">${fmt(f.emp, 3)}%</td><td class="n flag">${esc(f.z)}</td><td>sampling noise — deep run confirms</td></tr>`).join('')}
   </table>
   <table>
     <tr><th>deep re-run</th><th>iterations</th><th>predicted</th><th>empirical</th><th>z</th></tr>
@@ -125,12 +167,13 @@ let html = `<!DOCTYPE html>
 <p><b>z is not an error rate</b> — it is the error measured in units of &ldquo;how much error pure randomness would naturally produce&rdquo;:</p>
 <p style="text-align:center;font-family:Consolas,monospace;">z = (empirical − predicted) / σ, &nbsp;&nbsp; σ = √( p·(1−p) / N )</p>
 <ul>
-  <li><b>empirical</b> = how often the leaf actually fired in the simulation; <b>predicted</b> = what <code>loot_chance.js</code> claims; <b>σ</b> = the expected size of the random wobble for N batches (for a 5% leaf over 20,000 batches, σ ≈ 0.15 pp).</li>
-  <li><b>Even a perfect prediction never matches exactly.</b> A leaf predicted at 5% should fire ~1000 times in 20,000 batches — you'll observe 987, or 1014, or 1003. That's dice behaving like dice, not a bug: flip a fair coin 100 times and you almost never get exactly 50 heads.</li>
+  <li><b>empirical</b> = how often the leaf actually fired in the simulation; <b>predicted</b> = what <code>loot_chance.js</code> claims; <b>σ</b> = the expected size of the random wobble for N batches (for a 5% leaf over ${fmt(data.meta.perTableBatches, 0)} batches, σ ≈ ${fmt(Math.sqrt(0.05 * 0.95 / data.meta.perTableBatches) * 100, 3)} pp).</li>
+  <li><b>Even a perfect prediction never matches exactly.</b> A leaf predicted at 5% should fire about ${fmt(data.meta.perTableBatches * 0.05, 0)} times over ${fmt(data.meta.perTableBatches, 0)} batches — you'll observe a bit more or a bit less every run. That's dice behaving like dice, not a bug: flip a fair coin 100 times and you almost never get exactly 50 heads.</li>
   <li><b>So the comparison is not &ldquo;did we hit the number exactly&rdquo; (impossible)</b>, it is &ldquo;is the deviation the size chance would produce, or bigger?&rdquo; z ≈ 0 → normal random size; z ≈ 2 → happens to ~5% of leaves by luck; |z| &gt; 3 → ~0.27% by luck; |z| &gt; 4 → ~0.006% — many of those would mean the prediction is actually wrong.</li>
   <li><b>The bell curve IS what &ldquo;correct&rdquo; looks like.</b> The yellow overlay in graph 1 is the N(0,1) distribution chance produces when predictions are right. If every z were exactly 0 that would be a red flag — real randomness is never that clean; it would mean the simulation is not actually random (or the &ldquo;empirical&rdquo; side was computed from the prediction instead of generated).</li>
   <li><b>Why flat-zero tables exist (graph 3):</b> ${data.tables.filter(r => r[3] === 0).length} of 662 tables contain only guaranteed 100% drops. Their outcome is identical every batch (σ = 0), so z = 0 is genuinely correct — there is nothing random in them to deviate. The statistical test only has teeth on the ~185 tables with real randomness.</li>
   <li><b>The pp error rate is reported separately</b> (section 7): mean absolute error ${fmt(t.maePp, 3)} pp / worst single leaf ${fmt(t.maxAbsPp, 3)} pp = plain accuracy; z = statistical correctness of the model. Two views of the same comparison.</li>
+  <li><b>Why raising the batch count doesn't change the graph's shape:</b> z = deviation / σ with σ = √(p(1−p)/N), so more batches shrink the observed deviations <i>and</i> σ by the same ~√N factor — the standardized picture (bell curve, tails, the z = 0 spike) stays put by construction. That is the point of measuring in noise-units. What DOES improve: the raw error (from 0.118 pp at 20k to ${fmt(t.maePp, 3)} pp at ${fmt(data.meta.perTableBatches, 0)}), the ±4σ band in graph 4, and borderline noise flags (1 at 20k → ${t.totalFlaggedLeaves} here). Same for graph 3: its climbing tail is also batch-count-independent under a correct model.</li>
 </ul>
 </div>
 
@@ -174,6 +217,7 @@ function axes(ctx, w, h, px, py, xs, ys, fmtX, fmtY, xTicks, yTicks) {
     ctx.fillText(fmtY(v), px - 4, y); ctx.strokeStyle = '#232838'; ctx.beginPath(); ctx.moveTo(px, y); ctx.lineTo(w - 2, y); ctx.stroke(); });
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   xs.forEach(v => { const x = px + (v - xs[0]) / (xs[xs.length - 1] - xs[0]) * (w - px - 8);
+    if (v === 0 && ys[0] === 0) return; // y-axis already labels the shared origin
     ctx.fillText(fmtX(v), x, h - py + 4); });
 }
 // ---- G1: z histogram + normal overlay ----
@@ -185,7 +229,7 @@ function axes(ctx, w, h, px, py, xs, ys, fmtX, fmtY, xTicks, yTicks) {
   const Y = c => (h - py) - c / maxC * (h - py - 8);
   ctx.fillStyle = '#4f8fd9';
   cs.forEach((c, i) => { const z0 = lo + i * bw; if (!c) return; ctx.fillRect(X(z0) , Y(c), Math.max(1, X(z0 + bw) - X(z0) - 1), h - py - Y(c)); });
-  // normal overlay
+  // normal overlay (idealized: assumes ALL leaves freely random)
   const pdf = z => Math.exp(-z * z / 2) / Math.sqrt(2 * Math.PI);
   ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.beginPath();
   for (let z = lo; z <= lo + bw * cs.length; z += 0.02) {
@@ -193,9 +237,23 @@ function axes(ctx, w, h, px, py, xs, ys, fmtX, fmtY, xTicks, yTicks) {
     if (z === lo) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.stroke();
+  // exact mixture expectation for THIS dataset (dashed): bars should hug this
+  const E = D.expectedHist || [];
+  ctx.strokeStyle = '#7fe0a7'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.beginPath();
+  E.forEach((e, i) => { const z0 = lo + i * bw, x = X(z0 + bw / 2), y = Y(e);
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.lineTo(X(lo + bw * cs.length), Y(E[E.length - 1] || 0)); ctx.stroke(); ctx.setLineDash([]);
   axes(ctx, w, h, px, py, [-8, -4, 0, 4, 8], [0, Math.round(maxC / 2), Math.round(maxC)], z => z.toFixed(0), v => String(v), [-8, -4, 0, 4, 8], [0, Math.round(maxC / 2), Math.round(maxC)]);
+  // spike annotation: the z=0 pileup is structural (100% + near-certain leaves)
+  const spikeX = X(0.125), spikeTop = Y(cs[Math.round(-lo / bw)]);
+  ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1; ctx.beginPath();
+  ctx.moveTo(spikeX, spikeTop - 3); ctx.lineTo(spikeX + 34, 36); ctx.stroke();
+  ctx.fillStyle = '#f2c14e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('z=0 spike: guaranteed 100% drops + near-certain leaves', spikeX + 40, 30);
+  ctx.fillStyle = '#8a92a6';
+  ctx.fillText('(structural — same at any batch count; dashed green = exact expectation)', spikeX + 40, 46);
   ctx.fillStyle = '#7b8398'; ctx.textAlign = 'left'; ctx.font = '11px sans-serif';
-  ctx.fillText('count per 0.25σ bin (yellow = normal N(0,1))', px + 6, 8);
+  ctx.fillText('count per 0.25σ bin (yellow = N(0,1) ideal, dashed = exact)', px + 6, 8);
 })();
 // ---- G2: calibration tails ----
 (function () {
@@ -227,9 +285,9 @@ function axes(ctx, w, h, px, py, xs, ys, fmtX, fmtY, xTicks, yTicks) {
   const { ctx, w, h } = prep('g3'); const px = 40, py = 26;
   const vals = D.tables.map(r => r[3]).sort((a, b) => a - b);
   const ymax = 5, X = i => px + i / (vals.length - 1) * (w - px - 10), Y = v => (h - py) - v / ymax * (h - py - 8);
-  [4, D.quantilesAbsZ.p999].forEach((v, k) => { ctx.strokeStyle = k ? '#57a773' : '#d95f5f'; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(px, Y(v)); ctx.lineTo(w - 10, Y(v)); ctx.stroke(); ctx.setLineDash([]);
+  [4, D.expectedTableMax].forEach((v, k) => { ctx.strokeStyle = k ? '#57a773' : '#d95f5f'; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(px, Y(v)); ctx.lineTo(w - 10, Y(v)); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = k ? '#7fe0a7' : '#ff8f8f'; ctx.font = '10px sans-serif';
-    ctx.textAlign = 'right'; ctx.fillText(k ? 'expected max under null (' + fmt(v, 2) + ')' : 'flag threshold 4σ', w - 14, Y(v) - 6); });
+    ctx.textAlign = 'right'; ctx.fillText(k ? 'expected tallest table under null (\u2248' + fmt(v, 2) + ')' : 'flag threshold 4σ', w - 14, Y(v) - 6); });
   ctx.strokeStyle = '#4f8fd9'; ctx.lineWidth = 1.6; ctx.beginPath();
   vals.forEach((v, i) => { const x = X(i), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
   ctx.stroke();

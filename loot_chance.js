@@ -5,11 +5,15 @@
 //       Type        "Single" | "Empty" | "Choice" | "Multiple" | "Droplist"
 //                   | anything else (generic fallback, see below)
 //       Weight      consumed EXACTLY ONCE, owned by the parent context:
-//                     - under a Choice: relative share among siblings;
+//                     - under a Choice: relative share among siblings
+//                       (absent Weight = 100, the server's codec default);
 //                     - under a Multiple: that subtree's independent gate,
-//                       interpreted as a probability out of 100;
-//                     - at the root (no consuming parent): the node's own
-//                       gate, probability out of 100.
+//                       tested as `weight >= rnd*100` (i.e. a probability
+//                       out of 100; absent Weight = 100 => unconditional);
+//                     - at the ROOT (no consuming parent): NEVER consumed.
+//                       The game server calls the root container's
+//                       populateDrops directly, so a root Weight is dead
+//                       data (verified against Server_Sourcecode).
 //       RollsMin/RollsMax (Choice): K independent picks; a member's chance
 //                   of appearing at least once is E[1-(1-p)^K], K uniform
 //                   integer on [RollsMin..RollsMax] (exact expectation; a
@@ -22,8 +26,13 @@
 //       Container   (transparent single-child wrapper)
 //       arrays      (transparent sibling groups)
 //   * A node's own Weight is NEVER applied twice: once a parent consumes a
-//     child's Weight (as share, gate or pass factor) it is not re-applied
-//     inside that child's own evaluation.
+//     child's Weight (as share or gate) it is not re-applied inside that
+//     child's own evaluation. A Weight nobody consumes (entry roots) is
+//     dead data and does not scale any chances.
+//   * A Choice consumes its member weights as ONE pool: each roll picks one
+//     member with probability weight/sum (server WeightedMap cumulative
+//     pick); if the whole pool is explicitly 0, the server always picks the
+//     FIRST member (WeightedMap.get degenerate case) - mirrored here.
 //   * Unknown Types degrade generically and never throw: a node with
 //     Containers is treated Multiple-style (independent gated children);
 //     a node without Containers is treated as a plain leaf at the composed
@@ -36,6 +45,13 @@
 // Batch P (2026-10-22): extracted from script.js per user request #47-49
 // ("weight calculation for Multiple rolls", "unit tests for every container
 // type and deep nesting", "fully modular or agnostic").
+// Batch Q (2026-10-22): semantics verified against the decompiled game
+// server (Server_Sourcecode/com/hypixel/hytale/server/core/asset/type/item/
+// config/container/*.java). Two corrections came out of it:
+//   1. a ROOT container's own Weight is dead data (all server entry points
+//      call its populateDrops directly);
+//   2. a Choice member's ABSENT Weight defaults to 100 (codec default),
+//      so all-unweighted members are uniform 1/N picks, not passthrough.
 
 window.LootChance = (function () {
     'use strict';
@@ -71,8 +87,8 @@ window.LootChance = (function () {
     }
 
     function weightFactor(node, mode) {
-        // mode 'independent' (Multiple children / roots): Weight/100
-        // method 'share' never routes here (share math needs the sum).
+        // mode 'independent' (Multiple children): Weight/100; absent = 100
+        // (server codec default) => 1, i.e. unconditional child.
         if (mode !== 'independent') return 1;
         return node && node.Weight !== undefined && node.Weight !== null ? node.Weight / 100 : 1;
     }
@@ -91,8 +107,8 @@ window.LootChance = (function () {
         if (typeof parentChance !== 'number' || !isFinite(parentChance)) parentChance = 1;
         var isRoot = (selfFactor === undefined || selfFactor === null);
         if (Array.isArray(node)) {
-            // transparent sibling group: each element evaluated root-like
-            // (its own Weight, if any, gates that element)
+            // transparent sibling group: each element evaluated entry-like
+            // (its own Weight is dead data at the entry level - server truth)
             var sibs = [];
             for (var i = 0; i < node.length; i++) sibs.push(annotate(node[i], parentChance, undefined, resolver));
             return { kind: 'group', transparent: true, node: node, chance: parentChance, children: sibs };
@@ -100,7 +116,12 @@ window.LootChance = (function () {
         if (node.Container !== undefined && node.Container !== null) {
             return annotate(node.Container, parentChance, selfFactor, resolver);
         }
-        var factor = isRoot ? weightFactor(node, 'independent') : selfFactor;
+        // Batch Q (server-verified): a ROOT container's own Weight is never
+        // consumed - every server entry point (ItemModule.getRandomItemDrops,
+        // BlockHarvestUtils.getDrops, DroplistCommand, NPC drop actions)
+        // calls itemDropList.getContainer().populateDrops(...) directly, so
+        // the entry weight is dead data. Factor = 1, trigger unconsumed.
+        var factor = isRoot ? 1 : selfFactor;
         var chanceHere = parentChance * factor;
         var type = node.Type;
 
@@ -132,21 +153,29 @@ window.LootChance = (function () {
         return { kind: type ? String(type).toLowerCase() : 'leaf', node: node, chance: chanceHere, trigger: undefined };
     }
 
+    // Server ItemDropContainer codec default: an ABSENT Weight is 100.
+    function effWeight(c) {
+        if (c && c.Weight !== undefined && c.Weight !== null && isFinite(Number(c.Weight))) return Number(c.Weight);
+        return 100;
+    }
+
     function annotateChoice(node, parentChance, triggerFactor, resolver) {
         var members = Array.isArray(node.Containers) ? node.Containers : [];
         var sum = 0;
-        for (var i = 0; i < members.length; i++) sum += (members[i] && members[i].Weight !== undefined && members[i].Weight !== null) ? members[i].Weight : 0;
+        for (var i = 0; i < members.length; i++) sum += effWeight(members[i]);
         var range = rollRange(node);
-        var trigger = triggerFactor; // unconsumed own gate (only at root/wrapped roots it is not 1)
+        var trigger = triggerFactor; // unconsumed own gate (1 unless consumed nowhere/at root)
         var children = [];
         for (var j = 0; j < members.length; j++) {
             var c = members[j];
-            var p = sum > 0 && c && c.Weight !== undefined && c.Weight !== null ? c.Weight / sum : 0;
-            // parity with the legacy renderer: a Choice whose members carry no
-            // weights at all passes its chance through to every member
-            var atLeast = sum > 0 ? atLeastOnce(p, range ? range.min : undefined, range ? range.max : undefined) : 1;
+            // Each roll picks one member with probability weight/sum (server:
+            // WeightedMap cumulative pick). Degenerate pool: when the sum is 0
+            // (all members explicitly Weight 0), WeightedMap.get always
+            // returns the FIRST member - mirror that exactly.
+            var p = sum > 0 ? effWeight(c) / sum : (j === 0 ? 1 : 0);
+            var atLeast = atLeastOnce(p, range ? range.min : undefined, range ? range.max : undefined);
             // member Weight consumed HERE as the relative share -> pass selfFactor 1;
-            // the choice's own (unconsumed) gate factor multiplies the whole row once
+            // an unconsumed parent gate factor multiplies the whole row once
             children.push(annotate(c, parentChance * triggerFactor * atLeast, 1, resolver));
         }
         return { kind: 'choice', node: node, chance: parentChance, trigger: trigger, children: children, memberSum: sum };

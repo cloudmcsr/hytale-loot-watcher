@@ -1,0 +1,6 @@
+{
+  "data": "../data.js",
+  "loot_chance": "loot_chance.js",
+  "loot_generator": "loot_generator.js",
+  "app_index": "../index.html"
+}

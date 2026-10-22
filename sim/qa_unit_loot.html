@@ -1,0 +1,350 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <title>Hytale Loot Viewer</title>
+    
+    <link rel="icon" type="image/png" href="../loot-watcher-ico.png">
+    <link rel="stylesheet" href="../style/style.css">
+    
+    <meta property="og:url" content="https://cloudmcsr.github.io/hytale-loot-watcher/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Hytale Loot Viewer" />
+    <meta property="og:description" content="View and search Hytale loot tables. See which structures generate the items you want." />
+    <meta property="og:image" content="https://cloudmcsr.github.io/hytale-loot-watcher/og_image.png" />
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Hytale Loot Viewer">
+    <meta name="twitter:description" content="View and search Hytale loot tables. See which structures generate the items you want.">
+    <meta name="twitter:image" content="https://cloudmcsr.github.io/hytale-loot-watcher/og_image.png">
+
+    <script src="../data.js" defer></script>
+    <script src="../display_names.js" defer></script>
+    <script src="../icon_mappings.js" defer></script>
+</head>
+<body>
+    <!-- Upload Overlay -->
+    <div id="upload-overlay">
+        <div class="upload-box">
+            <h1 data-text="uploadTitle">Hytale Loot Viewer</h1>
+            <p data-text-html="uploadDragDrop">Drag & Drop <code>mapped_prefabs_data.json</code> here</p>
+            <button class="btn-upload" onclick="document.getElementById('file-input').click()">Select File</button>
+            <input type="file" id="file-input" accept=".json" hidden>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-top">
+            <div class="brand">
+                <img class="brand-mark" src="../loot-watcher-ico.png" alt="">
+                <div class="brand-text">
+                    <div class="brand-title">Loot Watcher</div>
+                    <div class="brand-sub">Hytale Client</div>
+                </div>
+            </div>
+            <div class="sidebar-tools">
+                <select id="category-select" class="category-select" title="Filter categories">
+                    <option value="All">All</option>
+                </select>
+                <div class="sidebar-tools-btns">
+                    <button id="btn-help" class="btn-icon" title="Help" onclick="openHelp()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                </button>
+                <button id="btn-open" class="btn-icon" title="Open File">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg>
+                </button>
+                </div>
+            </div>
+        </div>
+        <div class="search-box">
+            <div class="input-wrap">
+                <input type="text" id="search" placeholder="Search names, ids, or items...">
+                <button id="search-clear" class="search-clear hidden" onclick="clearSearch()" title="Clear">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <label class="filter-toggle">
+                <input type="checkbox" id="matches-only">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+            </label>
+        </div>
+        <div class="tree-root" id="sidebar-root"></div>
+        <div class="scroll-hint sidebar-foot">Shift+Scroll for horizontal scroll<br>Alt+LMB to collapse all folders</div>
+    </div>
+
+    <!-- Main View -->
+    <div class="main">
+        <div id="empty-state" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#57779c;">
+            <div style="opacity: 0.3; margin-bottom: 20px;">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            </div>
+            <div style="font-size: 18px; font-weight: 600;">Select a prefab to view loot tables</div>
+        </div>
+
+        <div id="content-view" class="hidden" style="display:flex; flex-direction:column;">
+            <div class="topbar">
+                <i class="tb-l"></i><i class="tb-m"></i><i class="tb-r"></i>
+                <div class="crumbs" id="view-path">Prefabs/Dungeons/Goblin...</div>
+            </div>
+
+            <div class="hero">
+                <div id="view-icon-wrap" class="hero-icon-wrap" style="display:none;">
+                    <img id="view-icon" alt="">
+                </div>
+                <div class="hero-copy">
+                    <div class="kicker" id="view-kicker">Structure</div>
+                    <h1 class="prefab-title" id="view-title">Goblin_Camp_01</h1>
+                    <div class="entry-id" id="view-sub-id"></div>
+                </div>
+                <div class="hero-stats stats-bar">
+                    <div class="stat-item">
+                        <div class="stat-value" id="stat-chests">0</div>
+                        <div class="stat-label" id="stat-chests-label">Chests</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="stat-tables">0</div>
+                        <div class="stat-label" id="stat-tables-label">Loot tables</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-area" id="loot-container">
+                <!-- Loot Cards Go Here -->
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title-block">
+                    <span class="modal-kicker" data-text="helpKicker">Help</span>
+                    <h2 data-text="modalTitle">Loot Table Viewer</h2>
+                </div>
+                <button class="modal-close" onclick="closeHelp()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-layout">
+                <nav class="modal-nav" id="help-nav">
+                    <button class="nav-link active" data-target="help-sec-quick" data-text="helpQuickTitle">Quick Start</button>
+                    <button class="nav-link" data-target="help-sec-tables" data-text="helpTablesTitle">Understanding Loot Tables</button>
+                    <button class="nav-link" data-target="help-sec-generate" data-text="helpGenTitle">Generating Data</button>
+                    <button class="nav-link" data-target="help-sec-tips" data-text="helpTipsTitle">Tips &amp; Tricks</button>
+                </nav>
+                <div class="modal-body" id="help-body">
+                <section class="help-section" id="help-sec-quick">
+                    <h3 id="help-quick-title">Quick Start</h3>
+                    <ul class="help-list" id="help-quick-items">
+                        <li><strong>Browse:</strong> Sidebar has Structures and Loot Tables (mobs, blocks, interactions, crops...)</li>
+                        <li><strong>Categories:</strong> Dropdown in the sidebar header; a specific category lists its files directly</li>
+                        <li><strong>Names:</strong> Entries show display names and ids — both are searchable</li>
+                        <li><strong>Highlight:</strong> Funnel icon + partial search term (glows matches, collapses the rest)</li>
+                        <li><strong>Collapse:</strong> ROLL headers or card titles</li>
+                        <li><strong>Copy coordinates:</strong> Click coordinate chips (in Structures)</li>
+                    </ul>
+                </section>
+
+                <section class="help-section" id="help-sec-tables">
+                    <h3 id="help-tables-title">Understanding Loot Tables</h3>
+                    <table class="help-table">
+                        <tr><th id="help-th-see">What you see</th><th id="help-th-meaning">Meaning</th></tr>
+                        <tr><td><code>ROLL (pick N)</code></td><td data-text="helpRowRoll">Picks N items among the slots below</td></tr>
+                        <tr><td><code>INDIVIDUAL ROLLS (N)</code></td><td data-text="helpRowIndividual">Each slot is its own independent roll — the badge is that roll's chance</td></tr>
+                        <tr><td><code>Included: [Table]</code></td><td data-text="helpRowIncluded">Another loot table rolled inline</td></tr>
+                        <tr><td>% on item slot</td><td data-text="helpRowItemChance">Chance the item appears; 100% = always</td></tr>
+                        <tr><td>% on a ROLL row</td><td data-text="helpRowRollChance">Chance the roll happens; none = always</td></tr>
+                        <tr><td>Nothing slot</td><td data-text="helpRowNothing">The pick rolled no item</td></tr>
+                    </table>
+                </section>
+
+                <section class="help-section" id="help-sec-generate">
+                    <h3 id="help-gen-title">Generating Data for Other Versions</h3>
+                    <p class="help-desc" data-text="helpGenIntro">You can generate data for any Hytale version using the files included with the game. No coding skills required!</p>
+
+                    <div class="help-step">
+                    <h4 id="help-step1">Locate Assets.zip</h4>
+                    <p class="help-desc" data-text="helpStep1Desc">Go to your Hytale installation folder and find this file:</p>
+                    <pre class="code-block"><code data-text="helpStep1Code">.../Hytale/Install/package/latest/Assets.zip</code></pre>
+                    </div>
+
+                    <div class="help-step">
+                    <h4 id="help-step2">Extract Required Folders</h4>
+                    <p class="help-desc" data-text-html="helpStep2Desc1">Open <code>Assets.zip</code> and navigate into <code>Assets/Server/</code>.</p>
+                    <p class="help-desc" data-text="helpStep2Desc2">Extract these folders to the same folder as this tool:</p>
+                    <ul class="help-list">
+                        <li data-text-html="helpStep2Prefabs"><code>Prefabs</code> (contains structure data)</li>
+                        <li data-text-html="helpStep2Drops"><code>Drops</code> (all loot tables: chests, mobs, blocks, interactions)</li>
+                    </ul>
+                    </div>
+
+                    <div class="help-step">
+                    <h4 id="help-step3">Run the Script</h4>
+                    <p class="help-desc" data-text-html="helpStep3Desc">Run the script below to generate a new <code>mapped_prefabs_data.json</code> file. Then run <code>scripts/generate_app_data.py</code> to merge it with the <code>Drops</code> folder into <code>data.js</code>.</p>
+                        <button class="code-toggle" onclick="togglePythonCode()">Show Full Source ▼</button>
+                        <pre class="code-block code-full hidden" id="python-code"><code>Loading source...</code></pre>
+                    </div>
+                </section>
+
+                <section class="help-section" id="help-sec-tips">
+                    <h3 id="help-tips-title">Tips &amp; Tricks</h3>
+                    <ul class="help-list" id="help-tips-items">
+                        <li>Hover over item icons for detailed tooltips</li>
+                        <li>Missing icons show "?" - run <code>showMissingIconsReport()</code> in console</li>
+                        <li>Press <kbd>Esc</kbd> to close this help dialog</li>
+                    </ul>
+                </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../texts.js" defer></script>
+    <script src="loot_chance.js" defer></script>
+    <script src="../scripts/extractor_source.js" defer></script>
+    <script src="../script.js" defer></script>
+<script>
+(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const results = [];
+  const t = (name, expected, actual) => results.push({ name, expected: String(expected), actual: String(actual), pass: String(expected) === String(actual) });
+
+  function ex(html) {
+    const host = document.createElement('div');
+    host.innerHTML = html;
+    const slots = [...host.querySelectorAll('.item-slot')].map(el => {
+      const ch = el.dataset.chance !== undefined ? el.dataset.chance : (el.querySelector('.item-chance') ? el.querySelector('.item-chance').textContent.trim() : '');
+      return (el.dataset.itemId || '#nothing') + '|' + ch + '|' + (el.dataset.qty === undefined ? '-' : el.dataset.qty);
+    });
+    const badges = [...host.querySelectorAll('.row-chance')].map(e => e.textContent.trim());
+    const rows = [...host.querySelectorAll('.logic-row')].map(e => e.textContent.replace(/\s+/g, ' ').trim());
+    return { slots, badges, rows };
+  }
+  function pinOrdered(res, want) {
+    let cursor = 0;
+    return want.map(w => {
+      const id = w.split('|')[0];
+      while (cursor < res.slots.length && res.slots[cursor].split('|')[0] !== id) cursor++;
+      return cursor < res.slots.length ? res.slots[cursor++] : id + '|MISSING';
+    }).join(';');
+  }
+  function findDef(name) {
+    for (const key of Object.keys(DATA)) {
+      const v = DATA[key];
+      if (Array.isArray(v)) { const hit = v.find(e => e && e.name === name && e.root); if (hit) return hit; }
+    }
+    return null;
+  }
+
+  await wait(1000);
+  try {
+    const S = (id, w, qmin, qmax) => ({ Type: 'Single', ...(w !== undefined ? { Weight: w } : {}), Item: { ItemId: id, ...(qmin !== undefined ? { QuantityMin: qmin } : {}), ...(qmax !== undefined ? { QuantityMax: qmax } : {}) } });
+    const E = (w) => ({ Type: 'Empty', ...(w !== undefined ? { Weight: w } : {}) });
+
+    t('single_noQty', 'X|100%|1', ex(renderLootGrid(S('X'))).slots.join(''));
+    t('single_qtyRange', 'X|100%|3-8', ex(renderLootGrid(S('X', undefined, 3, 8))).slots.join(''));
+    t('single_fixedQty', 'X|100%|4', ex(renderLootGrid(S('X', undefined, 4, 4))).slots.join(''));
+    t('empty_leaf', '#nothing|100%|-', ex(renderLootGrid(E())).slots.join(''));
+    t('null_def_rendersError_noSlots', 'NO_SLOT', !ex(renderLootGrid(null)).slots.length ? 'NO_SLOT' : 'HAS_SLOT');
+
+    t('multiple_weightedChildren', 'A|50%|1;B|100%|1;C|20%|1',
+      ex(renderLootGrid({ Type: 'Multiple', Containers: [S('A', 50), S('B'), S('C', 20)] })).slots.join(';'));
+    t('multiple_rootWeightIgnored_serverTruth', 'D|100%|1', ex(renderLootGrid({ Type: 'Multiple', Weight: 2, Containers: [S('D')] })).slots.join(''));
+    t('multiple_in_multiple', 'E|50%|1;F|90%|1',
+      ex(renderLootGrid({ Type: 'Multiple', Containers: [{ Type: 'Multiple', Weight: 50, Containers: [S('E')] }, S('F', 90)] })).slots.join(';'));
+    DATA.loot_table_definitions.UNIT_B = { Type: 'Multiple', Containers: [S('G')] };
+    t('multiple_weightedDroplistChild', 'G|40%|1',
+      ex(renderLootGrid({ Type: 'Multiple', Containers: [{ Type: 'Droplist', DroplistId: 'UNIT_B', Weight: 40 }] })).slots.join(';'));
+    t('multiple_children_badges_absent', 0,
+      ex(renderLootGrid({ Type: 'Multiple', Weight: 50, Containers: [S('D'), { Type: 'Choice', Weight: 25, Containers: [S('A')] }] })).badges.length);
+
+    t('choice_relativeNoRolls', 'A|25%|1;B|75%|1',
+      ex(renderLootGrid({ Type: 'Choice', Containers: [S('A', 1), S('B', 3)] })).slots.join(';'));
+    t('choice_fixedRolls2', 'A|43.8%|1;B|93.8%|1',
+      ex(renderLootGrid({ Type: 'Choice', RollsMin: 2, RollsMax: 2, Containers: [S('A', 25), S('B', 75)] })).slots.join(';'));
+    t('choice_rangeRolls1_2_exactE', 'A|34.4%|1;B|84.4%|1',
+      ex(renderLootGrid({ Type: 'Choice', RollsMin: 1, RollsMax: 2, Containers: [S('A', 25), S('B', 75)] })).slots.join(';'));
+    t('choice_rangeRolls1_3_exactE', 'A|42.2%|1;B|89.1%|1',
+      ex(renderLootGrid({ Type: 'Choice', RollsMin: 1, RollsMax: 3, Containers: [S('A', 25), S('B', 75)] })).slots.join(';'));
+    const trig = ex(renderLootGrid({ Type: 'Choice', Weight: 30, Containers: [S('A', 10), S('B', 30)] }));
+    t('choice_rootWeightIgnored_serverTruth', 'A|25%|1;B|75%|1', trig.slots.join(';'));
+    t('choice_rootWeight_noBadge', '', trig.badges.join(','));
+    const flat = ex(renderLootGrid({ Type: 'Choice', Containers: [S('A', 90)] }));
+    t('choice_flatten_noRow', true, flat.rows.length === 0 && flat.badges.length === 0);
+    t('choice_flatten_value', 'A|100%|1', flat.slots.join(''));
+    t('choice_flatten_rootWeightIgnored', 'A|100%|1', ex(renderLootGrid({ Type: 'Choice', Weight: 30, Containers: [S('A')] })).slots.join(''));
+
+    t('multiple_underChoice_woodBranch', 'St|50%|0-2;Sa|50%|0-1;St2|50%|1',
+      ex(renderLootGrid({ Type: 'Choice', Containers: [{ Type: 'Multiple', Weight: 50, Containers: [S('St', undefined, 0, 2), S('Sa', undefined, 0, 1)] }, { Type: 'Multiple', Weight: 50, Containers: [S('St2', undefined, 1, 1)] }] })).slots.join(';'));
+    t('choice_in_choice_consumedOnce_flathoist', 'C|37.5%|1;A|15.6%|1;B|46.9%|1',
+      ex(renderLootGrid({ Type: 'Choice', Containers: [{ Type: 'Choice', Weight: 10, Containers: [S('A', 1), S('B', 3)] }, S('C', 6)] })).slots.join(';'));
+    t('choice_underMultiple_portalsPattern', 'U|100%|1;Cu|30%|1-2;V|7.5%|1;W|22.5%|1',
+      ex(renderLootGrid({ Type: 'Multiple', Containers: [S('U'), { Type: 'Choice', Weight: 30, Containers: [S('Cu', undefined, 1, 2)] }, { Type: 'Choice', Weight: 30, Containers: [S('V', 10), S('W', 30)] }] })).slots.join(';'));
+    t('deepSandwich_m_in_choice_rolls2', 'A|75%|1;B|75%|1',
+      ex(renderLootGrid({ Type: 'Multiple', Containers: [{ Type: 'Choice', RollsMin: 2, RollsMax: 2, Containers: [{ Type: 'Multiple', Weight: 50, Containers: [S('A')] }, { Type: 'Multiple', Weight: 50, Containers: [S('B')] }] }] })).slots.join(';'));
+    t('choice_unweightedMembers_default100', 'A|50%|1;B|50%|1',
+      ex(renderLootGrid({ Type: 'Choice', Weight: 5, Containers: [{ Type: 'Choice', Containers: [S('A')] }, { Type: 'Choice', Containers: [S('B')] }] })).slots.join(';'));
+
+    t('unknownType_withContainers', 'A|40%|1;B|100%|1',
+      ex(renderLootGrid({ Type: 'Future_Box', Containers: [S('A', 40), S('B')] })).slots.join(';'));
+    t('unknownType_container_rootWeightIgnored', 'A|100%|1',
+      ex(renderLootGrid({ Type: 'Future_Box', Weight: 10, Containers: [S('A')] })).slots.join(''));
+    t('unknownLeaf_rendersNothing', 0, ex(renderLootGrid({ Type: 'Weird', Weight: 5 })).slots.length);
+
+    t('choice_rollLabel_1_3', true, ex(renderLootGrid({ Type: 'Choice', RollsMin: 1, RollsMax: 3, Containers: [S('A'), S('B')] })).rows[0].indexOf('1-3') >= 0);
+    t('choice_rollLabel_2_2', true, ex(renderLootGrid({ Type: 'Choice', RollsMin: 2, RollsMax: 2, Containers: [S('A'), S('B')] })).rows[0].indexOf('2-2') >= 0);
+
+    t('droplist_missing_noSlots', true, ex(renderLootGrid({ Type: 'Droplist', DroplistId: 'UNIT_MISSING_XYZ' })).slots.length === 0);
+
+    const r1 = findDef('Tree_Leaves');
+    t('REAL Tree_Leaves', 'Ingredient_Fibre|50%|1', pinOrdered(ex(renderLootGrid(r1.root)), ['Ingredient_Fibre|50%|1']));
+    t('REAL Tree_Leaves_Palm', 'Wood_Palm_Trunk|100%|1-5', pinOrdered(ex(renderLootGrid(findDef('Tree_Leaves_Palm').root)), ['Wood_Palm_Trunk|100%|1-5']));
+    t('REAL Tree_Leaves_Physics', 'Ingredient_Fibre|2%|1', pinOrdered(ex(renderLootGrid(findDef('Tree_Leaves_Physics').root)), ['Ingredient_Fibre|2%|1']));
+    t('REAL Tree_Leaves_Physics_Palm', 'Wood_Palm_Trunk|100%|1-5', pinOrdered(ex(renderLootGrid(findDef('Tree_Leaves_Physics_Palm').root)), ['Wood_Palm_Trunk|100%|1-5']));
+    {
+      const res = ex(renderLootGrid(findDef('Wood_Branch').root));
+      t('REAL Wood_Branch (all ingredient slots)', 'Ingredient_Stick|50%|0-2;Ingredient_Tree_Sap|50%|0-1;Ingredient_Stick|50%|1',
+        res.slots.filter(s => s.indexOf('Ingredient_') === 0).join(';'));
+    }
+    {
+      const def = DATA.loot_table_definitions['Zone4_Undead_Tier1'];
+      const want = ['Ingredient_Fabric_Scrap_Linen|51%|1-2', 'Ingredient_Bone_Fragment|51%|1-2', 'Armor_Steel_Ancient_Chest|6.4%|1', 'Armor_Steel_Ancient_Hands|6.4%|1', 'Armor_Steel_Ancient_Head|6.4%|1', 'Armor_Steel_Ancient_Legs|6.4%|1', 'Weapon_Crossbow_Ancient_Steel|6.4%|1'];
+      t('REAL Zone4_Undead_Tier1 exactExpectation (+droplist panel skips extras)', want.join(';'), pinOrdered(ex(renderLootGrid(def)), want));
+    }
+    {
+      const def = DATA.loot_table_definitions['Zone4_Encounters_Tier2'];
+      const want = ['Ingredient_Fabric_Scrap_Cindercloth|24.1%|1-4', 'Ore_Cobalt|36.5%|1-4', 'Ore_Adamantite|28.4%|1-2'];
+      t('REAL Zone4_Encounters_Tier2 exactExpectation', want.join(';'), def ? pinOrdered(ex(renderLootGrid(def)), want) : 'DEF_NOT_FOUND');
+    }
+    {
+      const def = DATA.loot_table_definitions['Portals_Goblin_Chest_Tier1'];
+      if (!def) t('REAL Portals_Goblin_Chest_Tier1', 'pins', 'DEF_NOT_FOUND');
+      else {
+        const x = ex(renderLootGrid(def));
+        const want = ['Ingredient_Scraps|100%|1-3', 'Ingredient_Scraps|100%|5-7', '#nothing|95%|-', 'Weapon_Spear_Scrap|5%|1', 'Weapon_Arrow_Crude|100%|2-4', 'Weapon_Arrow_Crude|25%|3-5', 'Ingredient_Bar_Copper|30%|1-2', 'Potion_Health_Lesser|25%|1', 'Food_Vegetable_Cooked|13.3%|1-2', 'Food_Wildmeat_Cooked|13.3%|1-2', 'Food_Fish_Grilled|13.3%|1-2'];
+        t('REAL Portals_Goblin_Chest_Tier1 ordered pins', want.join(';'), pinOrdered(x, want));
+        t('REAL Portals no badges for consumed triggers', 0, x.badges.filter(b => ['25%', '30%', '40%', '5%'].indexOf(b) >= 0).length);
+      }
+    }
+
+{
+  const d = findDef('Drops_Fishing_Trap_Crude');
+  const want = ['Rock_Salt|27.5%|1-4', 'Fish_Bluegill_Item|9.3%|1', 'Fish_Catfish_Item|9.3%|1', 'Fish_Minnow_Item|9.3%|1', 'Rubble_Stone|3%|1-5', 'Deco_Coral_Shell_Purple|3%|1', 'Fish_Whale_Humpback_Item|0%|1'];
+  t('REAL Drops_Fishing_Trap_Crude (absent member Weight = default 100, tiny chance not pinned)', want.join(';'), d ? pinOrdered(ex(renderLootGrid(d.root)), want) : 'DEF_NOT_FOUND');
+}
+    const failed = results.filter(r => !r.pass);
+    console.log('QATEST:' + JSON.stringify({ total: results.length, passed: results.length - failed.length, failed: failed.length, failures: failed }));
+  } catch (err) { console.log('QA-ERR: ' + (err && err.stack)); }
+})();
+</script></body>
+</html>
+
+
+
+
+

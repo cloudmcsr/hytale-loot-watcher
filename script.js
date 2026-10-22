@@ -907,102 +907,89 @@ function formatPct(chance) {
     return (pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(1)) + '%';
 }
 
-function renderLootGrid(node, parentChance = 1) {
+function renderLootGrid(node) {
     if(!node) return `<div style="color:red; padding:10px;">${escapeHtml(T('defNotFound'))}</div>`;
 
-    if(node.Container) return renderLootGrid(node.Container, parentChance);
+    // Batch P: chance math lives in loot_chance.js (window.LootChance). This
+    // renderer is presentation-only: annotate once, then walk the annotated
+    // tree and emit markup. raw defs are accepted anywhere (auto-annotated).
+    const ann = node.__lootAnn ? node : LootChance.annotate(node, { resolveDroplist: id => DATA.loot_table_definitions[id] });
+    return renderAnn(ann);
+}
 
-    if(Array.isArray(node)) {
-        return node.map(n => renderLootGrid(n, parentChance)).join('');
+function renderAnn(ann) {
+    if(!ann) return '';
+    switch(ann.kind) {
+        case 'group':    return ann.children.map(renderAnn).join('');
+        case 'multiple': return ann.children.map(renderAnn).join('');
+        case 'choice':   return renderChoiceAnn(ann);
+        case 'droplist': return renderDroplistAnn(ann);
+        case 'empty':
+            return `<div class="item-slot item-slot-nothing">
+                <span class="item-chance">${formatPct(ann.chance)}</span>
+            </div>`;
+        case 'single':   return renderSingleAnn(ann);
+        default:         return '';
+    }
+}
+
+function renderChoiceAnn(ann) {
+    // A single-member pick row is indistinguishable in outcome from the item
+    // itself - flatten it so users don't wonder where "the selection" is.
+    if(ann.children.length === 1) return renderAnn(ann.children[0]);
+
+    const range = LootChance._internals.rollRange(ann.node);
+    // legacy label parity: unsettled range prints "min-max"; a fixed count of
+    // exactly 1 prints "1" (any other fixed count keeps "2-2" style)
+    const rangeLabel = !range ? '1' : (range.min === 1 && range.max === 1 ? '1' : `${range.min}-${range.max}`);
+    const rowLabel = tf('rollLabel', { range: rangeLabel });
+    // badge shows ONLY an unconsumed own trigger (< 1); a Weight consumed by
+    // a parent Choice/Multiple is already inside the item chances.
+    let badge = '';
+    if(ann.node.Weight !== undefined && ann.trigger !== undefined && ann.trigger < 1) {
+        badge = ` <span class="row-chance">${formatPct(ann.trigger)}</span>`;
     }
 
-    let html = '';
-
-    if(node.Type === "Choice") {
-        const members = node.Containers || [];
-        const sum = members.reduce((s, c) => s + (c.Weight || 0), 0);
-        const rolls = (node.RollsMin === undefined && node.RollsMax === undefined)
-            ? 1
-            : (node.RollsMin + node.RollsMax) / 2;
-        const trigger = node.Weight !== undefined ? node.Weight / 100 : 1;
-
-        // A single-member trigger/pick row is indistinguishable in outcome from the
-        // item itself - flatten it so users don't wonder where "the selection" is.
-        if(members.length === 1) {
-            const c = members[0];
-            const cond = sum > 0 ? 1 - Math.pow(1 - (c.Weight || 0) / sum, rolls) : 1;
-            return renderLootGrid(c, parentChance * trigger * cond);
-        }
-
-        const rowLabel = tf('rollLabel', { range: rolls === 1 ? '1' : `${node.RollsMin}-${node.RollsMax}` });
-        let badge = '';
-        if(node.Weight !== undefined && trigger < 1) {
-            badge = ` <span class="row-chance">${formatPct(trigger)}</span>`;
-        }
-
-        const selId = `sel-${selectionCounter++}`;
-        html += `<div class="logic-row expanded" data-toggle="${selId}"><span class="row-arrow"></span> ${rowLabel}${badge}</div>`;
-        html += `<div class="selection-content" id="${selId}">`;
-        html += wrapGroups(members.map(c => {
-            const cond = sum > 0
-                ? 1 - Math.pow(1 - (c.Weight || 0) / sum, rolls)
-                : 1;
-            return renderLootGrid(c, parentChance * trigger * cond);
-        }).join(''), false);
-        html += `</div>`;
-    }
-    else if(node.Type === "Multiple") {
-        // Every loot table is a bundle of independent rolls; the grouping header is noise,
-        // so entries render directly in the card grid.
-        if(node.Containers) {
-            html += node.Containers.map(c => renderLootGrid(c, parentChance)).join('');
-        }
-    }
-    else if(node.Type === "Droplist") {
-        const safeId = node.DroplistId.replace(/[^a-zA-Z0-9]/g, '');
-        html += `
-            <div class="logic-row droplist-head expanded" data-droplist="${escapeAttr(node.DroplistId)}">
-                <span class="row-arrow"></span><span>${escapeHtml(T('includedTitle'))}</span><a class="link">${escapeHtml(node.DroplistId)}</a>
-            </div>
-            <div class="droplist-content" id="dl-${safeId}">
-        `;
-        // Auto-expand by rendering immediately
-        const def = DATA.loot_table_definitions[node.DroplistId];
-        if(def) {
-            html += wrapGroups(renderLootGrid(def, parentChance));
-        } else {
-            html += '<div style="color:red; padding:5px;">' + escapeHtml(T('defNotFound')) + '</div>';
-        }
-        html += `</div>`;
-    }
-    else if(node.Type === "Empty") {
-        html += `
-            <div class="item-slot item-slot-nothing">
-                <span class="item-chance">${formatPct(parentChance)}</span>
-            </div>
-        `;
-    }
-    else if(node.Type === "Single" && node.Item) {
-        const qmin = node.Item.QuantityMin;
-        const qmax = node.Item.QuantityMax;
-        const qty = (qmax === undefined && qmin === undefined)
-                    ? '1'
-                    : (qmax === undefined || qmax === qmin)
-                        ? String(qmin ?? 1)
-                        : `${qmin}-${qmax}`;
-        const chanceDisplay = formatPct(parentChance);
-        const iconPath = getIconPath(node.Item.ItemId);
-
-        html += `
-            <div class="item-slot" data-item-id="${escapeAttr(node.Item.ItemId)}" data-qty="${escapeAttr(String(qty))}" data-chance="${chanceDisplay}">
-                <img loading="lazy" src="${iconPath}" onerror="trackMissingIcon('${escapeAttr(node.Item.ItemId)}', this)" data-item-id="${escapeAttr(node.Item.ItemId)}">
-                <span class="item-qty">${qty}</span>
-                <span class="item-chance">${chanceDisplay}</span>
-            </div>
-        `;
-    }
-
+    const selId = `sel-${selectionCounter++}`;
+    let html = `<div class="logic-row expanded" data-toggle="${selId}"><span class="row-arrow"></span> ${rowLabel}${badge}</div>`;
+    html += `<div class="selection-content" id="${selId}">`;
+    html += wrapGroups(ann.children.map(renderAnn).join(''), false);
+    html += `</div>`;
     return html;
+}
+
+function renderDroplistAnn(ann) {
+    const safeId = ann.node.DroplistId.replace(/[^a-zA-Z0-9]/g, '');
+    let html = `
+        <div class="logic-row droplist-head expanded" data-droplist="${escapeAttr(ann.node.DroplistId)}">
+            <span class="row-arrow"></span><span>${escapeHtml(T('includedTitle'))}</span><a class="link">${escapeHtml(ann.node.DroplistId)}</a>
+        </div>
+        <div class="droplist-content" id="dl-${safeId}">
+    `;
+    html += ann.child ? wrapGroups(renderAnn(ann.child)) : '<div style="color:red; padding:5px;">' + escapeHtml(T('defNotFound')) + '</div>';
+    html += `</div>`;
+    return html;
+}
+
+function renderSingleAnn(ann) {
+    const node = ann.node;
+    const qmin = node.Item.QuantityMin;
+    const qmax = node.Item.QuantityMax;
+    const qty = (qmax === undefined && qmin === undefined)
+                ? '1'
+                : (qmax === undefined || qmax === qmin)
+                    ? String(qmin ?? 1)
+                    : `${qmin}-${qmax}`;
+    const chanceDisplay = formatPct(ann.chance);
+    const iconPath = getIconPath(node.Item.ItemId);
+
+    return `
+        <div class="item-slot" data-item-id="${escapeAttr(node.Item.ItemId)}" data-qty="${escapeAttr(String(qty))}" data-chance="${chanceDisplay}">
+            <img loading="lazy" src="${iconPath}" onerror="trackMissingIcon('${escapeAttr(node.Item.ItemId)}', this)" data-item-id="${escapeAttr(node.Item.ItemId)}">
+            <span class="item-qty">${qty}</span>
+            <span class="item-chance">${chanceDisplay}</span>
+        </div>
+    `;
 }
 
 // Toggle selection visibility
